@@ -3,12 +3,27 @@ from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import PythonOperator
 from datetime import datetime
 import psycopg2
-from utils import get_config_nf
 import traceback
+from configparser import ConfigParser 
 
+
+def get_config_nf():
+    return get_config(filename='properties.ini')
+
+def get_config(filename):
+    parser = ConfigParser()
+    parser.read(filename)
+
+    config_dict = {}
+
+    for element in parser.sections():
+        config_dict[element] = {}
+        for name, value in parser.items(element):
+            config_dict[element][name] = value
+
+    return config_dict
 
 _config = get_config_nf()
-
 DB_HOST = _config['db']['postgres_host']
 DB_NAME = _config['db']['postgres_name']
 DB_USER = _config['db']['postgres_user']
