@@ -1,8 +1,8 @@
 import psycopg2
-import utils
+from utils import get_config_nf
 import traceback
 
-_config = utils.get_config_nf()
+_config = get_config_nf()
 
 DB_HOST = _config['db']['postgres_host']
 DB_NAME = _config['db']['postgres_name']
@@ -27,4 +27,4 @@ def postgres_test():
         cursor.close()
 
 
-#postgres_test()
+postgres_test()
