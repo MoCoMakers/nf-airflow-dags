@@ -1,42 +1,12 @@
 from airflow import DAG
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import PythonOperator
+from airflow.hooks.postgres_hook import PostgresHook
 from datetime import datetime
-import psycopg2
 import traceback
-from configparser import ConfigParser 
 
 
-def get_config(filename):
-    parser = ConfigParser()
-    parser.read(filename)
-
-    config_dict = {}
-
-    for element in parser.sections():
-        config_dict[element] = {}
-        for name, value in parser.items(element):
-            config_dict[element][name] = value
-
-    return config_dict
-
-def get_config_nf():
-    return get_config(filename='properties.ini')
-
-_config = get_config_nf()
-DB_HOST = _config['db']['postgres_host']
-DB_NAME = _config['db']['postgres_name']
-DB_USER = _config['db']['postgres_user']
-DB_PASSWORD = _config['db']['postgres_password']
-
-test_table_create_sql = _config['sql']['test_table_create']
-
-pg_conn = psycopg2.connect(
-        host=DB_HOST,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD
-)
+test_table_create_sql = "CREATE TABLE im_test_deleteme (name VARCHAR(255), description VARCHAR(255))"
 
 # Define the default_args dictionary
 default_args = {
@@ -54,6 +24,8 @@ dag = DAG(
 
 def test_table_create():
     try:
+        pg_hook = PostgresHook(postgres_conn_id='Comp_Bio_Hub_Postgres', schema='public')
+        pg_conn = pg_hook.get_conn()
         cursor = pg_conn.cursor()
         cursor.execute(test_table_create_sql)
         print("A new table has been created.")
@@ -83,4 +55,3 @@ end = DummyOperator(
 
 # Set task dependencies
 start >> dwh_test_task >> end
-
