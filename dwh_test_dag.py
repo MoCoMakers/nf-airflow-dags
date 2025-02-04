@@ -7,9 +7,6 @@ import traceback
 from configparser import ConfigParser 
 
 
-def get_config_nf():
-    return get_config(filename='properties.ini')
-
 def get_config(filename):
     parser = ConfigParser()
     parser.read(filename)
@@ -22,6 +19,9 @@ def get_config(filename):
             config_dict[element][name] = value
 
     return config_dict
+
+def get_config_nf():
+    return get_config(filename='properties.ini')
 
 _config = get_config_nf()
 DB_HOST = _config['db']['postgres_host']
