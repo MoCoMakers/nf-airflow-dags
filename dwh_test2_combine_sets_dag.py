@@ -24,7 +24,7 @@ default_args = {
 
 # Create the DAG object
 dag = DAG(
-    'data_warehouse_etl_dag',
+    'dwh_test2_combine_sets_dag',
     default_args=default_args,
     schedule_interval='@once',
 )
