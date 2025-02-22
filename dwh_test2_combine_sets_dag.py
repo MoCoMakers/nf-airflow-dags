@@ -8,6 +8,12 @@ import traceback
 # SQL queries
 extract_sql_1 = "SELECT * FROM public.mv_ligand_list"
 extract_sql_2 = "SELECT * FROM public.ligand_physchem"
+create_load_tables_1 = """
+CREATE TABLE IF NOT EXISTS target_table_1
+"""
+create_load_tables_2 = """
+CREATE TABLE IF NOT EXISTS target_table_2
+"""
 create_combined_table_sql = """
 CREATE TABLE IF NOT EXISTS combined_table AS 
 SELECT * FROM target_table_1 
@@ -28,6 +34,49 @@ dag = DAG(
     default_args=default_args,
     schedule_interval='@once',
 )
+def generate_create_table_sql(table_name, target_table_name, postgres_conn_id):
+    pg_hook = PostgresHook(postgres_conn_id=postgres_conn_id, schema='public')
+    pg_conn = pg_hook.get_conn()
+    cursor = pg_conn.cursor()
+    cursor.execute(f"""
+        SELECT column_name, data_type 
+        FROM information_schema.columns 
+        WHERE table_name = '{table_name}'
+    """)
+    columns = cursor.fetchall()
+    pg_conn.close()
+
+    create_table_sql = f"CREATE TABLE IF NOT EXISTS {target_table_name} ("
+    create_table_sql += ", ".join([f"{col[0]} {col[1]}" for col in columns])
+    create_table_sql += ")"
+    return create_table_sql
+
+def create_tables():
+    try:
+        # Generate SQL for target_table_1
+        create_table_1_sql = generate_create_table_sql(
+            table_name='mv_ligand_list', 
+            target_table_name='target_table_1', 
+            postgres_conn_id='guide2pharma'
+        )
+        
+        # Generate SQL for target_table_2
+        create_table_2_sql = generate_create_table_sql(
+            table_name='ligand_physchem', 
+            target_table_name='target_table_2', 
+            postgres_conn_id='guide2pharma'
+        )
+
+        pg_hook_dest = PostgresHook(postgres_conn_id='Comp_Bio_Hub_Postgres', schema='public')
+        pg_conn_dest = pg_hook_dest.get_conn()
+        cursor_dest = pg_conn_dest.cursor()
+        cursor_dest.execute(create_table_1_sql)
+        cursor_dest.execute(create_table_2_sql)
+        pg_conn_dest.commit()
+        pg_conn_dest.close()
+    except Exception as e:
+        print("Error during table creation.")
+        traceback.print_exc()
 
 def extract_data():
     try:

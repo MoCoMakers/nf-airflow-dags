@@ -6,7 +6,7 @@ from datetime import datetime
 import traceback
 
 
-test_table_create_sql = "CREATE TABLE IF NOT EXISTS im_test_deleteme (name VARCHAR(255), description VARCHAR(255))"
+test_table_create_sql = "CREATE TABLE IF NOT EXISTS new_table_here (name VARCHAR(255), description VARCHAR(255))"
 
 # Define the default_args dictionary
 default_args = {
