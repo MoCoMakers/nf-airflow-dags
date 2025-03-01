@@ -4,6 +4,7 @@ from airflow.operators.python_operator import PythonOperator
 from airflow.hooks.postgres_hook import PostgresHook
 from datetime import datetime
 import traceback
+from pathlib import Path
 
 
 secondary_dose_curve_table_sql = """CREATE TABLE IF NOT EXISTS im_dep_sprime_secondary_dose_curve broad_id 
