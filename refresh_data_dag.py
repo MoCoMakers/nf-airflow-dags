@@ -68,9 +68,11 @@ def refresh_data(file_path, file_name):
         csv_data = pd.read_csv(input_folder / file_name)
 
         rows = []
+        print("CSV content is being loaded to a list.")
         for val in csv_data.values:
             rows.append(tuple(list(val.flatten())))
         
+        print("Started to write the data list to DB.")
         for rows_batch in batch(rows, 1000):
             cursor.executemany(secondary_dose_curve_table_insert_sql, rows_batch)
             pg_conn.commit()
