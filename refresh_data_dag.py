@@ -74,12 +74,15 @@ def refresh_data(file_path, file_name):
         for rows_batch in batch(rows, 1000):
             cursor.executemany(secondary_dose_curve_table_insert_sql, rows_batch)
             pg_conn.commit()
+            print(f"{len(rows_batch)} records done.") 
         
         print(f"Total number of rows inserted to DB = {len(rows)}")
     except Exception as e:
-        print("Error happened while refreshing data in database.")
-        traceback.print_exc()     
+        print("Error happened while refreshing the data in database.")
+        traceback.print_exc()
+        pg_conn.rollback()    
     finally:
+        pg_conn.commit()
         cursor.close()
 
 def batch(iterable, n):
