@@ -6,7 +6,7 @@ import traceback
 from pathlib import Path
 from datetime import datetime, timedelta
 import pandas as pd
-
+import time
 
 
 secondary_dose_curve_table_sql = """CREATE TABLE IF NOT EXISTS im_dep_sprime_secondary_dose_curve 
@@ -16,13 +16,13 @@ r2 FLOAT, auc FLOAT, ec50 FLOAT, ic50 FLOAT,
 name VARCHAR(255), moa VARCHAR(1000), target VARCHAR(1000),
 disease_area VARCHAR(1000), indication VARCHAR(1000),
 smiles VARCHAR(1500), phase VARCHAR(255), passed_str_profiling boolean, row_name VARCHAR(255),
-CONSTRAINT sprime_dose_curve_pk PRIMARY KEY (broad_id, depmap_id, screen_id))"""
+CONSTRAINT sprime_dose_curve_pk PRIMARY KEY (broad_id, depmap_id, ccle_name, screen_id))"""
 
 secondary_dose_curve_table_insert_sql = """INSERT INTO im_dep_sprime_secondary_dose_curve 
 (broad_id, depmap_id, ccle_name, screen_id, upper_limit, lower_limit, 
 slope, r2, auc, ec50, ic50, name, moa, target, disease_area, indication,
 smiles, phase, passed_str_profiling, row_name) 
-VALUES (%s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT(broad_id, depmap_id, screen_id) DO NOTHING"""
+VALUES (%s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT(broad_id, depmap_id, ccle_name, screen_id) DO NOTHING"""
 
 omics_mutations_matrix_table_sql = """CREATE TABLE IF NOT EXISTS im_dep_sprime_damaging_mutations (cell_line VARCHAR(255), gene VARCHAR(255), value INTEGER)"""
 
@@ -65,32 +65,35 @@ def refresh_data(process_type):
         table_create_sql = secondary_dose_curve_table_sql
         data_insert_sql = secondary_dose_curve_table_insert_sql
         file_path = DEP_PRISM_PATH
+        data_file_name = SEC_RESP_DOSE_CURVE
     input_folder = Path(file_path)
     try:
-        print(f"Data refresh process started for {table_name}. Table will be created if it doesn't exist.")
+        print(f"Data refresh process started for {table_name}.")
         pg_hook = PostgresHook(postgres_conn_id='Comp_Bio_Hub_Postgres', schema='public')
         pg_conn = pg_hook.get_conn()
         cursor = pg_conn.cursor()
+        
         cursor.execute(table_create_sql)
         pg_conn.commit()
         
-        print(f"Started to load {data_file_name} content into memory.")
-        # Read the CSV file
-        csv_data = pd.read_csv(input_folder / data_file_name)
-
-        rows = []
-        for val in csv_data.values:
-            rows.append(tuple(list(val.flatten())))
-        
-        print(f"Started inserting the data in {data_file_name} file into {table_name} table.")
-        for rows_batch in batch(rows, 20000):
-            cursor.executemany(data_insert_sql, rows_batch)
+        chunksize = 20000
+        total = 0
+        for chunk in pd.read_csv(input_folder / data_file_name, chunksize=chunksize):
+            start_time_insert = datetime.now()
+            rows = []
+            for row in chunk.values:
+                rows.append(tuple(list(row.flatten())))
+            cursor.executemany(data_insert_sql, rows)
             pg_conn.commit()
-            print(f"{len(rows_batch)} records done.") 
+            end_time_insert = datetime.now()
+            print(f"Duration to insert {len(chunk)} records: {end_time_insert - start_time_insert}")
+            total = total + len(chunk.values)
+            time.sleep(3)
+            
+        print(f"Total number of records inserted to DB = {total}") 
         
-        print(f"Total number of rows inserted to DB = {len(rows)}")
     except Exception as e:
-        print("Error happened while refreshing the data in database.")
+        print(f"Error happened while refreshing {table_name} table.")
         traceback.print_exc()
         pg_conn.rollback()    
     finally:
