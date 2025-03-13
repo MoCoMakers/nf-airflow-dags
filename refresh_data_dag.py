@@ -7,31 +7,51 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import pandas as pd
 import time
+import pickle
 
 
-secondary_dose_curve_table_sql = """CREATE TABLE IF NOT EXISTS im_dep_sprime_secondary_dose_curve 
+secondary_dose_curve_raw_table_sql = """CREATE TABLE IF NOT EXISTS im_dep_raw_secondary_dose_curve 
 (broad_id VARCHAR(255), depmap_id VARCHAR(255), ccle_name VARCHAR(1000), screen_id VARCHAR(50),
 upper_limit INTEGER, lower_limit FLOAT, slope FLOAT,
 r2 FLOAT, auc FLOAT, ec50 FLOAT, ic50 FLOAT,
 name VARCHAR(255), moa VARCHAR(1000), target VARCHAR(1000),
 disease_area VARCHAR(1000), indication VARCHAR(1000),
-smiles VARCHAR(1500), phase VARCHAR(255), passed_str_profiling boolean, row_name VARCHAR(255),
-CONSTRAINT sprime_dose_curve_pk PRIMARY KEY (broad_id, depmap_id, ccle_name, screen_id))"""
+smiles VARCHAR(1500), phase VARCHAR(255), passed_str_profiling boolean, row_name VARCHAR(255))"""
 
-secondary_dose_curve_table_insert_sql = """INSERT INTO im_dep_sprime_secondary_dose_curve 
+secondary_dose_curve_raw_insert_sql = """INSERT INTO im_dep_raw_secondary_dose_curve 
 (broad_id, depmap_id, ccle_name, screen_id, upper_limit, lower_limit, 
 slope, r2, auc, ec50, ic50, name, moa, target, disease_area, indication,
 smiles, phase, passed_str_profiling, row_name) 
-VALUES (%s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT(broad_id, depmap_id, ccle_name, screen_id) DO NOTHING"""
+VALUES (%s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
 
-omics_mutations_matrix_table_sql = """CREATE TABLE IF NOT EXISTS im_dep_sprime_damaging_mutations (cell_line VARCHAR(255), gene VARCHAR(255), value INTEGER)"""
+secondary_dose_curve_raw_select = "select * from im_dep_raw_secondary_dose_curve"
 
-omics_mutations_matrix_table_insert_sql = "INSERT INTO im_dep_sprime_damaging_mutations (cell_line, gene, value) values (%s, %s,%s) ON CONFLICT (cell_line, gene) DO NOTHING"
+
+omics_mutations_matrix_raw_table_sql = """CREATE TABLE IF NOT EXISTS im_dep_raw_damaging_mutations (gene VARCHAR(255), values BYTEA)"""
+omics_mutations_matrix_raw_insert_sql = "INSERT INTO im_dep_raw_damaging_mutations (gene, values) values (%s, %s)"
+
+im_sprime_solved_s_prime_table_sql = """CREATE TABLE IF NOT EXISTS im_sprime_solved_s_prime 
+(broad_id VARCHAR(255), depmap_id VARCHAR(255), ccle_name VARCHAR(1000), screen_id VARCHAR(50),
+upper_limit INTEGER, lower_limit FLOAT, slope FLOAT,
+r2 FLOAT, auc FLOAT, ec50 FLOAT, ic50 FLOAT,
+name VARCHAR(255), moa VARCHAR(1000), target VARCHAR(1000),
+disease_area VARCHAR(1000), indication VARCHAR(1000),
+smiles VARCHAR(1500), phase VARCHAR(255), passed_str_profiling boolean, row_name VARCHAR(255), eff FLOAT, eff_100 FLOAT, eff_ec50 FLOAT, s_prime FLOAT)"""
+
+im_sprime_solved_s_prime_insert_sql = """INSERT INTO im_sprime_solved_s_prime 
+(broad_id, depmap_id, ccle_name, screen_id, upper_limit, lower_limit, 
+slope, r2, auc, ec50, ic50, name, moa, target, disease_area, indication,
+smiles, phase, passed_str_profiling, row_name, eff, eff_100, eff_ec50, s_prime) 
+VALUES (%s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+
 
 DEP_PRISM_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Prism19Q4"
 DEP_PUBLIC_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Public24Q2"
 
 SEC_RESP_DOSE_CURVE = "secondary-screen-dose-response-curve-parameters.csv"
+OMICS_MUTATIONS_MATRIX = "OmicsSomaticMutationsMatrixDamaging.csv"
+
+pg_hook = PostgresHook(postgres_conn_id='Comp_Bio_Hub_Postgres', schema='public')
 
 
 # Define the default_args dictionary
@@ -49,27 +69,24 @@ dag = DAG(
 )
 
 def refreshData():
-    refresh_data("SEC_RESP_DOSE_CURVE") 
+    save_sec_resp_dose_curve_data()
+    save_omics_data()
+    solve_S_Prime()
              
 
-def refresh_data(process_type):
+# Save the contents of the "dose-response-curve-parameters.csv" file to table "im_dep_raw_secondary_dose_curve"
+def save_sec_resp_dose_curve_data():
     start_time = datetime.now()
     
-    table_create_sql = None
-    table_name = None
-    data_insert_sql = None
-    data_file_name = None
-    file_path = None
-    if process_type == "SEC_RESP_DOSE_CURVE":
-        table_name = "im_dep_sprime_secondary_dose_curve"
-        table_create_sql = secondary_dose_curve_table_sql
-        data_insert_sql = secondary_dose_curve_table_insert_sql
-        file_path = DEP_PRISM_PATH
-        data_file_name = SEC_RESP_DOSE_CURVE
+    table_name = "im_dep_raw_secondary_dose_curve"
+    table_create_sql = secondary_dose_curve_raw_table_sql
+    data_insert_sql = secondary_dose_curve_raw_insert_sql
+    file_path = DEP_PRISM_PATH
+    data_file_name = SEC_RESP_DOSE_CURVE
+        
     input_folder = Path(file_path)
     try:
         print(f"Data refresh process started for {table_name}.")
-        pg_hook = PostgresHook(postgres_conn_id='Comp_Bio_Hub_Postgres', schema='public')
         pg_conn = pg_hook.get_conn()
         cursor = pg_conn.cursor()
         
@@ -89,8 +106,7 @@ def refresh_data(process_type):
             print(f"Duration to insert {len(chunk)} records: {end_time_insert - start_time_insert}")
             total = total + len(chunk.values)
             time.sleep(3)
-            
-        print(f"Total number of records inserted to DB = {total}") 
+        print(f"Total number of records inserted to {table_name} table = {total}") 
         
     except Exception as e:
         print(f"Error happened while refreshing {table_name} table.")
@@ -101,6 +117,91 @@ def refresh_data(process_type):
         cursor.close()
         end_time = datetime.now()
         print(f"Duration to complete the refresh process for {table_name}: {end_time - start_time}")
+
+# Save the contents of the "OmicsSomaticMutationsMatrixDamaging.csv" file to table "im_dep_raw_damaging_mutations"
+# row=(gene_name, values=[values in the column specific to the gene])
+# Each value in values array correspond to a cell line.
+# It will be assumed that cell line names are known and pre-ordered. Cell line names can be stored in a separate table.
+def save_omics_data():
+    table_name = "im_dep_raw_damaging_mutations"
+    table_create_sql = omics_mutations_matrix_raw_table_sql
+    data_insert_sql = omics_mutations_matrix_raw_insert_sql
+    drop_table_sql = f"drop table if exists {table_name}"
+
+    pg_conn = pg_hook.get_conn()
+    cursor = pg_conn.cursor()
+
+    cursor.execute(drop_table_sql)
+    pg_conn.commit()
+    
+    cursor.execute(table_create_sql)
+    pg_conn.commit()
+    print(f"DB table {table_name} has been created.")
+
+    input_folder = Path(DEP_PUBLIC_PATH)
+    filename = OMICS_MUTATIONS_MATRIX
+
+    damaging_mutations = pd.read_csv(input_folder/filename)
+
+    genes = damaging_mutations.columns.tolist()[1:]
+
+    insert_rows = []
+    for gene in genes:
+        insert_rows.append((gene, pickle.dumps(damaging_mutations[gene])))
+    cursor.executemany(data_insert_sql, insert_rows)
+    pg_conn.commit()
+    print(f"Total # of rows inserted into {table_name} table: {len(insert_rows)}")
+
+
+# Solve S' for all entries in response-curve-parameters
+def solve_S_Prime():
+    table_name = "im_sprime_solved_s_prime"
+    table_create_sql = im_sprime_solved_s_prime_table_sql
+    data_insert_sql = im_sprime_solved_s_prime_insert_sql
+    drop_table_sql = f"drop table if exists {table_name}"
+    
+    pg_conn = pg_hook.get_conn()
+    cursor = pg_conn.cursor()
+
+    cursor.execute(drop_table_sql)
+    pg_conn.commit()
+    
+    cursor.execute(table_create_sql)
+    pg_conn.commit()
+    print(f"DB table {table_name} has been created.")
+
+    cursor.execute(secondary_dose_curve_raw_select)
+    secondary_raw_data = cursor.fetchall()
+    
+    for rows_batch in batch(secondary_raw_data, 10000):
+        insert_rows = []
+        for row in rows_batch:
+
+            # Derive EFF (upper_limit - lower_limit) 
+            #df['EFF'] = df['upper_limit'] - df['lower_limit']
+            EFF = row[4]  - row[5]
+
+            # Derive EFF*100
+            #df['EFF*100'] = df['EFF'] * 100
+            EFF_100 = EFF * 100
+
+            # Derive EFF/EC50
+            #df['EFF/EC50'] = df['EFF'] / df['ec50']
+            EFF_EC50 = EFF / row[9]
+
+            # Derive S'
+            # ASINH((EFF*100)/EC50)
+            #df["S'"] = np.arcsinh(df['EFF*100'] / df['ec50'])
+            S_PRIME = np.arcsinh(EFF_100 / row[9])
+
+            new_row_values = list(row)
+            new_row_values.extend([EFF, EFF_100, EFF_EC50, S_PRIME])
+
+            insert_rows.append(tuple(new_row_values))
+        
+        cursor.executemany(data_insert_sql, insert_rows)
+        pg_conn.commit()
+        print(f"Total # of rows inserted into {table_name} table: {len(insert_rows)}")
 
 
 def batch(iterable, n):
