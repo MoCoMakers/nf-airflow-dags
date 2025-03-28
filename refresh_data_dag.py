@@ -133,14 +133,15 @@ def refresh_omic_genes():
 
 def refreshData():
     refresh_secondary_dose_curve()
-    #refresh_damaging_mutations()
-    #refresh_s_prime()
+    refresh_s_prime()
+    refresh_damaging_mutations()
     # 7300 = NF1 (4763)
-    #refresh_mutations_by_cell_line([7300])
+    refresh_mutations_by_cell_line([7300])
 
 
-# Task_1
-# Save the contents of the "dose-response-curve-parameters.csv" file to table "im_dep_raw_secondary_dose_curve"
+# TASK_1:
+#Load all dose-response-curve-parameters.csv from ~/nf_streamlit/app/data$
+#Table name -> im_dep_raw_secondary_dose_curve
 def refresh_secondary_dose_curve():
     start_time_main = datetime.now()
     
@@ -149,6 +150,7 @@ def refresh_secondary_dose_curve():
     data_insert_sql = secondary_dose_curve_raw_insert_sql
     file_path = DEP_PRISM_PATH
     data_file_name = SEC_RESP_DOSE_CURVE
+    drop_table_sql = f"drop table if exists {table_name}"
         
     input_folder = Path(file_path)
     pg_conn = pg_hook.get_conn()
@@ -156,8 +158,12 @@ def refresh_secondary_dose_curve():
 
     try:
         print(f"Data refresh process started for {table_name}.")
+        cursor.execute(drop_table_sql)
+        pg_conn.commit()
+
         cursor.execute(table_create_sql)
         pg_conn.commit()
+        print(f"DB table {table_name} has been created.")
         
         chunksize = 20000
         total = 0
@@ -184,8 +190,9 @@ def refresh_secondary_dose_curve():
         end_time_main = datetime.now()
         print(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
 
-#Task_2
-# row = (cell_line, gene_id, mutation_value) 
+# TASK_2:
+#Load OmicsSomaticMutationsMatrixDamaging.csv from ~/nf_streamlit/app/data
+#Table name -> im_dep_sprime_damaging_mutations
 def refresh_damaging_mutations():
     start_time_main = datetime.now()
     table_name = "im_dep_sprime_damaging_mutations"
@@ -244,7 +251,9 @@ def refresh_damaging_mutations():
         end_time_main = datetime.now()
         print(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
 
-# Task_3
+# TASK_3:
+#Solve S' for all entries in response-curve-parameters
+#Table name -> im_sprime_solved_s_prime
 def refresh_s_prime():
     start_time_main = datetime.now()
     table_name = "im_sprime_solved_s_prime"
@@ -421,7 +430,7 @@ refresh_data_task = PythonOperator(
     task_id='refresh_data_task',
     python_callable=refreshData,
     dag=dag,
-    execution_timeout=timedelta(seconds=100000),
+    execution_timeout=timedelta(seconds=900000),
 )
 
 end = DummyOperator(
