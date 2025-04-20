@@ -58,6 +58,23 @@ mutation_values_all = "select * from im_dep_sprime_damaging_mutations"
 im_sprime_s_prime_with_mutations_table_sql = """CREATE TABLE IF NOT EXISTS im_sprime_s_prime_with_mutations (s_prime_id INTEGER, cell_line VARCHAR(255), tissue VARCHAR(255), gene_id INTEGER, mutation_value INTEGER)"""
 im_sprime_s_prime_with_mutations_insert_sql = "INSERT INTO im_sprime_s_prime_with_mutations (s_prime_id, cell_line, tissue, gene_id, mutation_value) values (%s,%s,%s,%s)"
 
+# Just have these columns in “fnl_sprime_pooled_delta_sprime” table for now:
+# - name
+# - ref_pooled_s_prime = mean of the cell lines matching the filters that have 0 out of 2 damaging mutations,
+# - num_ref_lines
+# - test_pooled_s_prime = mean of the cell lines matching the filters that have 2 out of 2 damaging mutations
+# - num_test_lines
+# - delta_s_prime = ref_pooled_s_prime - test_pooled_s_prime
+fnl_sprime_pooled_delta_sprime_table_sql = """CREATE TABLE IF NOT EXISTS fnl_sprime_pooled_delta_sprime (name VARCHAR(255), ref_pooled_s_prime FLOAT, num_ref_lines INTEGER, test_pooled_s_prime FLOAT, num_test_lines INTEGER, delta_s_prime FLOAT)"""
+fnl_sprime_pooled_delta_sprime_insert_sql = """INSERT INTO fnl_sprime_pooled_delta_sprime (name, ref_pooled_s_prime, num_ref_lines, test_pooled_s_prime, num_test_lines, delta_s_prime) values (%s,%s,%s,%s,%s,%s)"""
+
+source_data_for_fnl_sprime_table = """select distinct s_prime.name, mut.cell_line, s_prime.s_prime, mut.mutation_value from im_sprime_s_prime_with_mutations mut 
+left join im_sprime_solved_s_prime s_prime on s_prime.row_name=mut.cell_line
+where mut.tissue='LUNG' and mut.gene_id=7300 and mut.mutation_value in (0, 2)
+and s_prime.ccle_name like '%_LUNG' and s_prime.name='{}'"""
+
+names_for_tissue_select = "select distinct name from im_sprime_solved_s_prime where ccle_name like '%_LUNG'"
+
 
 DEP_PRISM_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Prism19Q4"
 DEP_PUBLIC_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Public24Q2"
@@ -413,6 +430,67 @@ def refresh_mutations_by_cell_line(gene_id_list):
         cursor.close()
         end_time_main = datetime.now()
         print(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
+
+# Task_5: Create the Pooled delta S' results table from 4 by applying these filters:
+# 	- LUNG
+# 	- NF1 (a single gene for now, later we will do all genes in LUNG)
+# 	- HTSwithMTS010_Overlayed as the study (file should be 500MB)
+# 	- Only include compounds where the size of ref lines >2 and size of test lines >2
+# Table name -> fnl_sprime_pooled_delta_sprime
+def refresh_pooled_delta_s_results():
+    table_name = "fnl_sprime_pooled_delta_sprime"
+    table_create_sql = fnl_sprime_pooled_delta_sprime_table_sql
+    data_insert_sql = fnl_sprime_pooled_delta_sprime_insert_sql
+    drop_table_sql = f"drop table if exists {table_name}"
+
+    pg_conn = pg_hook.get_conn()
+    cursor = pg_conn.cursor()
+
+    try:
+        # 1) Drop existing table
+        cursor.execute(drop_table_sql)
+        pg_conn.commit()
+
+        # 2) Create a new table
+        cursor.execute(table_create_sql)
+        pg_conn.commit()
+        print(f"DB table {table_name} has been created.")
+
+        cursor.execute(names_for_tissue_select)
+        names_for_tissue = cursor.fetchall()
+
+        pooled_delta_s_prime_dict = {}
+        for name_tissue_row in names_for_tissue:
+            s_prime_name = name_tissue_row[0]
+            cursor.execute(source_data_for_fnl_sprime_table.format(s_prime_name.replace("'", "''")))
+            results = cursor.fetchall()
+            ref_sprime_values = []
+            test_sprime_values = []
+            for row in results:
+                s_prime = row[2]
+                mutation_value = row[3]
+
+                if mutation_value == 0:
+                    ref_sprime_values.append(s_prime)
+                else:
+                    test_sprime_values.append(s_prime)
+
+            ref_pooled_s_prime = np.mean(ref_sprime_values) if len(ref_sprime_values) > 0 else 0
+            test_pooled_s_prime = np.mean(test_sprime_values) if len(test_sprime_values) > 0 else 0
+
+            pooled_delta_s_prime_dict[s_prime_name] = (s_prime_name.replace("'", "''"), ref_pooled_s_prime, len(ref_sprime_values), test_pooled_s_prime, len(test_sprime_values), ref_pooled_s_prime - test_pooled_s_prime)   
+
+        insert_rows = list(pooled_delta_s_prime_dict.values())
+        for rows_batch in batch(insert_rows, 250):
+            cursor.executemany(data_insert_sql, rows_batch)
+            pg_conn.commit()
+        print(f"Total number of rows inserted to {table_name} table: {len(pooled_delta_s_prime_dict)}")
+    except Exception as e:
+        traceback.print_exc()
+        pg_conn.rollback()
+    finally:
+        pg_conn.commit()
+        cursor.close()
 
 
 def batch(iterable, n):
