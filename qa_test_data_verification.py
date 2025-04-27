@@ -11,15 +11,15 @@ import statistics
 
 
 # name, ref_pooled_s_prime, num_ref_lines, test_pooled_s_prime, num_test_lines, delta_s_prime
-fnl_sprime_pooled_delta_sprime_select = "select name, ref_pooled_s_prime, num_ref_lines, test_pooled_s_prime, num_test_lines, delta_s_prime from fnl_sprime_pooled_delta_sprime"
+fnl_sprime_pooled_delta_sprime_select = """select name, ref_pooled_s_prime, num_ref_lines, test_pooled_s_prime, num_test_lines, delta_s_prime, tissue from fnl_sprime_pooled_delta_sprime where gene_id = %s and tissue = %s"""
 
 DEP_PRISM_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Prism19Q4"
 DEP_PUBLIC_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Public24Q2"
 
-postgres_host = "XXXX"
-postgres_name = "XXXX"
-postgres_user = "XXXX"
-postgres_password = "XXXX"
+postgres_host = "XXXXX"
+postgres_name = "XXXXX"
+postgres_user = "XXXXX"
+postgres_password = "XXXXX"
 
 pg_conn = psycopg2.connect(
         host=postgres_host,
@@ -38,9 +38,9 @@ def build_df(*args, **kwargs):
     
     return df
 
-def fetch_data_from_db(select_sql):
+def fetch_data_from_db(select_sql, params):
     cursor = pg_conn.cursor()
-    cursor.execute(select_sql)
+    cursor.execute(select_sql, params)
     rows = cursor.fetchall()
     # for r in rows:
     #     print(pickle.loads(r[1]))
@@ -51,8 +51,7 @@ def fetch_data_from_db(select_sql):
 # 1) Download 'Pooled Delta S' for Selected Values' data from web tool
 # 2) Put the downloaded CSV file into the folder where you are running this code.
 # 3) Run this function and check console logs to see the row count comparisons, and number of items that don't match.
-# TODO: Add gene_id, tissue_name parameters to this method because CSV content will be specific to gene and tissue.
-def qa_verify_fnl_sprime_pooled_delta_sprime(data_file_name):
+def qa_verify_fnl_sprime_pooled_delta_sprime(data_file_name, gene_id, tissue_name):
      # extracting only columns: 'name', 'ref_pooled_s_prime', 'num_ref_lines', 'test_pooled_s_prime', 'num_test_lines', 'delta_s_prime'
     column_order = ['name', 'ref_pooled_s_prime', 'num_ref_lines', 'test_pooled_s_prime', 'num_test_lines', 'delta_s_prime']
     df = build_df(data_file_name, usecols=column_order)
@@ -66,9 +65,8 @@ def qa_verify_fnl_sprime_pooled_delta_sprime(data_file_name):
 
     #print(f"df_dict length = {len(df_dict)}")
     
-    # TODO: Add gene and tissue to match the content within the CSV file. 
-    # We have the data for gene id (7300 = NF1) and tissue LUNG
-    db_data = fetch_data_from_db(fnl_sprime_pooled_delta_sprime_select)
+    
+    db_data = fetch_data_from_db(fnl_sprime_pooled_delta_sprime_select, (gene_id, tissue_name))
 
     print(f"DB row count = {len(db_data)}")
 
@@ -139,4 +137,4 @@ def qa_verify_fnl_sprime_pooled_delta_sprime(data_file_name):
 
     return df
 
-qa_verify_fnl_sprime_pooled_delta_sprime("pooled_delta_s_prime.csv")
+qa_verify_fnl_sprime_pooled_delta_sprime("pooled_delta_s_prime.csv", 7300, "LUNG")

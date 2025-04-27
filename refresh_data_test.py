@@ -10,10 +10,10 @@ import pickle
 import statistics
 
 
-postgres_host = "XXXX"
-postgres_name = "XXXX"
-postgres_user = "XXXX"
-postgres_password = "XXXX"
+postgres_host = "XXXXX"
+postgres_name = "XXXXX"
+postgres_user = "XXXXX"
+postgres_password = "XXXXX"
 
 pg_conn = psycopg2.connect(
         host=postgres_host,
@@ -83,8 +83,8 @@ im_sprime_s_prime_with_mutations_insert_sql = "INSERT INTO im_sprime_s_prime_wit
 # - test_pooled_s_prime = mean of the cell lines matching the filters that have 2 out of 2 damaging mutations
 # - num_test_lines
 # - delta_s_prime = ref_pooled_s_prime - test_pooled_s_prime
-fnl_sprime_pooled_delta_sprime_table_sql = """CREATE TABLE IF NOT EXISTS fnl_sprime_pooled_delta_sprime (name VARCHAR(255), ref_pooled_s_prime FLOAT, num_ref_lines INTEGER, test_pooled_s_prime FLOAT, num_test_lines INTEGER, delta_s_prime FLOAT)"""
-fnl_sprime_pooled_delta_sprime_insert_sql = "INSERT INTO fnl_sprime_pooled_delta_sprime (name, ref_pooled_s_prime, num_ref_lines, test_pooled_s_prime, num_test_lines, delta_s_prime) values (%s,%s,%s,%s,%s,%s)"
+fnl_sprime_pooled_delta_sprime_table_sql = """CREATE TABLE IF NOT EXISTS fnl_sprime_pooled_delta_sprime (name VARCHAR(255), ref_pooled_s_prime FLOAT, num_ref_lines INTEGER, test_pooled_s_prime FLOAT, num_test_lines INTEGER, delta_s_prime FLOAT, gene_id INTEGER, tissue VARCHAR(255))"""
+fnl_sprime_pooled_delta_sprime_insert_sql = "INSERT INTO fnl_sprime_pooled_delta_sprime (name, ref_pooled_s_prime, num_ref_lines, test_pooled_s_prime, num_test_lines, delta_s_prime, gene_id, tissue) values (%s,%s,%s,%s,%s,%s,%s,%s)"
 
 
 source_data_for_fnl_sprime_table = """select distinct s_prime.name, mut.cell_line, s_prime.s_prime, mut.mutation_value from im_sprime_s_prime_with_mutations mut 
@@ -502,7 +502,7 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
                 ref_pooled_s_prime = np.mean(ref_sprime_values) if len(ref_sprime_values) > 0 else 0
                 test_pooled_s_prime = np.mean(test_sprime_values) if len(test_sprime_values) > 0 else 0
 
-                pooled_delta_s_prime_dict[key] = (key, ref_pooled_s_prime, len(ref_sprime_values), test_pooled_s_prime, len(test_sprime_values), ref_pooled_s_prime - test_pooled_s_prime)   
+                pooled_delta_s_prime_dict[key] = (key, ref_pooled_s_prime, len(ref_sprime_values), test_pooled_s_prime, len(test_sprime_values), ref_pooled_s_prime - test_pooled_s_prime, gene_id, tissue)   
 
         print(f"pooled_delta_s_prime_dict length = {len(pooled_delta_s_prime_dict)}")
         insert_rows = list(pooled_delta_s_prime_dict.values())
@@ -621,4 +621,4 @@ def confirm_pooled_delta_s_prime_with_mutation_tissue_data(test_name):
 
 #refresh_pooled_delta_s_results()
 
-#refresh_pooled_delta_s_results(7300, "LUNG")
+refresh_pooled_delta_s_results(7300, "LUNG")
