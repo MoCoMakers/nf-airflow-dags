@@ -42,15 +42,12 @@ VALUES (%s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %
 
 im_sprime_solved_s_prime_select_sql = "select id, depmap_id, ccle_name from im_sprime_solved_s_prime"
 
-
 im_dep_sprime_damaging_mutations_table_sql = """CREATE TABLE IF NOT EXISTS im_dep_sprime_damaging_mutations (cell_line VARCHAR(255), gene_id INTEGER, mutation_value INTEGER)"""
 im_dep_sprime_damaging_mutations_insert_sql = "INSERT INTO im_dep_sprime_damaging_mutations (cell_line, gene_id, mutation_value) values (%s, %s,%s)"
 
 im_omics_gene_table_sql = """CREATE TABLE IF NOT EXISTS im_omics_genes (id integer primary key generated always as identity, name VARCHAR(100))"""
 im_omics_gene_insert_sql = "INSERT INTO im_omics_genes (name) values (%s)"
 im_omics_gene_select_sql = "select * from im_omics_genes"
-
-cell_line_counts_by_tissue_select ="select depmap_id, ccle_name, count(*) from im_sprime_solved_s_prime group by depmap_id, ccle_name"
 
 mutation_values_for_cell_lines = "select * from im_dep_sprime_damaging_mutations where cell_line in ({}) and mutation_value in (0, 2)"
 

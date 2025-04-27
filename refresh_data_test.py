@@ -38,11 +38,6 @@ VALUES (%s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %
 
 secondary_dose_curve_raw_select = "select * from im_dep_raw_secondary_dose_curve where screen_id='HTSwithMTS010_Overlayed' and passed_str_profiling=true"
 
-omics_mutations_matrix_raw_table_sql = """CREATE TABLE IF NOT EXISTS im_dep_raw_damaging_mutations (gene VARCHAR(255), values BYTEA)"""
-omics_mutations_matrix_raw_insert_sql = "INSERT INTO im_dep_raw_damaging_mutations (gene, values) values (%s, %s)"
-
-omics_mutations_matrix_raw_select_sql = "select * from im_dep_raw_damaging_mutations"
-
 im_sprime_solved_s_prime_table_sql = """CREATE TABLE IF NOT EXISTS im_sprime_solved_s_prime 
 (id integer primary key generated always as identity, broad_id VARCHAR(255), depmap_id VARCHAR(255), ccle_name VARCHAR(1000), screen_id VARCHAR(50),
 upper_limit INTEGER, lower_limit FLOAT, slope FLOAT,
@@ -59,15 +54,12 @@ VALUES (%s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %
 
 im_sprime_solved_s_prime_select_sql = "select id, depmap_id, ccle_name from im_sprime_solved_s_prime"
 
-
 im_dep_sprime_damaging_mutations_table_sql = """CREATE TABLE IF NOT EXISTS im_dep_sprime_damaging_mutations (cell_line VARCHAR(255), gene_id INTEGER, mutation_value INTEGER)"""
 im_dep_sprime_damaging_mutations_insert_sql = "INSERT INTO im_dep_sprime_damaging_mutations (cell_line, gene_id, mutation_value) values (%s, %s,%s)"
 
 im_omics_gene_table_sql = """CREATE TABLE IF NOT EXISTS im_omics_genes (id integer primary key generated always as identity, name VARCHAR(100))"""
 im_omics_gene_insert_sql = "INSERT INTO im_omics_genes (name) values (%s)"
 im_omics_gene_select_sql = "select * from im_omics_genes"
-
-cell_line_counts_by_tissue_select ="select depmap_id, ccle_name, count(*) from im_sprime_solved_s_prime group by depmap_id, ccle_name"
 
 mutation_values_for_cell_lines = "select * from im_dep_sprime_damaging_mutations where cell_line in ({}) and mutation_value in (0, 2)"
 
@@ -93,8 +85,6 @@ where mut.gene_id=%s and mut.tissue=%s and mut.mutation_value in (0, 2)
 and s_prime.ccle_name like %s and s_prime.name in ({})"""
 
 names_for_tissue_select = """select distinct name from im_sprime_solved_s_prime where ccle_name like %s"""
-
-s_prime_values_select = "select id, s_prime from im_sprime_solved_s_prime"
 
 DEP_PRISM_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Prism19Q4"
 DEP_PUBLIC_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Public24Q2"
