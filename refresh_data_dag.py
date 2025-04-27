@@ -52,6 +52,9 @@ im_omics_gene_select_sql = "select * from im_omics_genes"
 mutation_values_for_cell_lines = "select * from im_dep_sprime_damaging_mutations where cell_line in ({}) and mutation_value in (0, 2)"
 
 mutation_values_all = "select * from im_dep_sprime_damaging_mutations"
+im_sprime_s_prime_with_mutations_table_sql = """CREATE TABLE IF NOT EXISTS im_sprime_s_prime_with_mutations (s_prime_id INTEGER, cell_line VARCHAR(255), tissue VARCHAR(255), gene_id INTEGER, mutation_value INTEGER)"""
+im_sprime_s_prime_with_mutations_insert_sql = "INSERT INTO im_sprime_s_prime_with_mutations (s_prime_id, cell_line, tissue, gene_id, mutation_value) values (%s,%s,%s,%s,%s)"
+
 
 # Just have these columns in “fnl_sprime_pooled_delta_sprime” table for now:
 # - name
@@ -366,10 +369,12 @@ def refresh_mutations_by_cell_line(gene_id_list):
 
         tissue_names = []
 
+        s_prime_tissue_dict = {}
         for s_prime_row in s_prime_rows:
             res = s_prime_row[2].split("_", 1)
-            result = res[1] if len(res) > 1 else ""
-            tissue_names.append(result)
+            tissue_name = res[1] if len(res) > 1 else ""
+            tissue_names.append(tissue_name)
+            s_prime_tissue_dict[s_prime_row[0]] = tissue_name
 
         tissue_names = list(set(tissue_names))
 
@@ -409,8 +414,7 @@ def refresh_mutations_by_cell_line(gene_id_list):
                     mutation_values = cell_line_mutations_dict[row[1]]
                     for mut_val in mutation_values:
                         if mut_val[0] in gene_id_list:
-                            #insert_rows = [list(row)+list(mut_val) for tup in mutation_values]
-                            insert_rows = [tuple([row[0], row[1], tissue]+list(mut_val))]
+                            insert_rows = [tuple([row[0], row[1], s_prime_tissue_dict[row[0]]]+list(mut_val))]
                             s_prime_with_mutations_rows.extend(insert_rows)
 
             print(f"Target cell lines: {cell_line_batch}")

@@ -10,10 +10,10 @@ import pickle
 import statistics
 
 
-postgres_host = "XXXXX"
-postgres_name = "XXXXX"
-postgres_user = "XXXXX"
-postgres_password = "XXXXX"
+postgres_host = "XXXX"
+postgres_name = "XXX"
+postgres_user = "XXX"
+postgres_password = "XXXX"
 
 pg_conn = psycopg2.connect(
         host=postgres_host,
@@ -361,10 +361,12 @@ def refresh_mutations_by_cell_line(gene_id_list):
 
     tissue_names = []
 
+    s_prime_tissue_dict = {}
     for s_prime_row in s_prime_rows:
         res = s_prime_row[2].split("_", 1)
-        result = res[1] if len(res) > 1 else ""
-        tissue_names.append(result)
+        tissue_name = res[1] if len(res) > 1 else ""
+        tissue_names.append(tissue_name)
+        s_prime_tissue_dict[s_prime_row[0]] = tissue_name
 
     tissue_names = list(set(tissue_names))
 
@@ -399,13 +401,12 @@ def refresh_mutations_by_cell_line(gene_id_list):
             insert_rows = []
             # [(gene_id, mutation_value)..]
             res = row[2].split('_', 1)
-            tissue = res[1] if len(res) > 1 else ""
             if row[1] in cell_line_batch:
                 mutation_values = cell_line_mutations_dict[row[1]]
                 for mut_val in mutation_values:
                     if mut_val[0] in gene_id_list:
                         #insert_rows = [list(row)+list(mut_val) for tup in mutation_values]
-                        insert_rows = [tuple([row[0], row[1], tissue]+list(mut_val))]
+                        insert_rows = [tuple([row[0], row[1], s_prime_tissue_dict[row[0]]]+list(mut_val))]
                         s_prime_with_mutations_rows.extend(insert_rows)
 
         print(f"Target cell lines: {cell_line_batch}")
@@ -462,7 +463,7 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
         s_prime_name_vals_dict = {}
         for name_tissue_row_batch in batch(names_for_tissue, 100):
             s_prime_names = [row[0] for row in name_tissue_row_batch]
-            formatted_s_prime_names = ', '.join(f"'{w.replace("'", "''")}'" for w in s_prime_names)
+            formatted_s_prime_names = ', '.join(f"'{w}'" for w in s_prime_names)
             cursor.execute(source_data_for_fnl_sprime_table.format(formatted_s_prime_names), (gene_id, tissue, "%_"+tissue))
             results = cursor.fetchall()
             print(f"results length = {len(results)}")
@@ -595,20 +596,15 @@ def confirm_pooled_delta_s_prime_with_mutation_tissue_data(test_name):
 
 
 #solve_S_Prime()
-#refresh_mutations_by_cell_line('NF1 (4763)', 'BREAST')
-#refresh_mutations_by_cell_line('ERRFI1 (54206)', 'STOMACH')
-#refresh_mutations_by_cell_line('FAM87B (400728)', 'BREAST')
 #refresh_damaging_mutations()
 #refresh_omic_genes()
-#refresh_mutations_by_cell_line('LUNG')
 #get_mutation_values_for_cell_lines(['ACH-000047'])
 
-#analyze_mutation_tissue()
+analyze_mutation_tissue()
 #confirm_pooled_delta_s_prime_with_mutation_tissue_data("1-azakenpaullone")
-
 
 #refresh_mutations_by_cell_line([7300]) 
 
 #refresh_pooled_delta_s_results()
 
-refresh_pooled_delta_s_results(7300, "LUNG")
+#refresh_pooled_delta_s_results(7300, "LUNG")
