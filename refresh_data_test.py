@@ -11,8 +11,8 @@ import statistics
 
 
 postgres_host = "XXXX"
-postgres_name = "XXX"
-postgres_user = "XXX"
+postgres_name = "XXXX"
+postgres_user = "XXXX"
 postgres_password = "XXXX"
 
 pg_conn = psycopg2.connect(
@@ -522,8 +522,11 @@ def analyze_mutation_tissue():
     for chunk in pd.read_csv(Path("") / file_name, chunksize=chunksize):
         total_rows = total_rows + len(chunk.values)
         for row in chunk.values:
+            name = row[1]
             cell_line = row[8]
             ccle_name = row[14]
+            if name == '9-aminoacridine' and cell_line == 'ACH-001075':
+                print(f"{row}")
             if cell_line in cell_line_ccle_dict.keys():
                 current_ccles = cell_line_ccle_dict[cell_line]
                 current_ccles.append(ccle_name)
