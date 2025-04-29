@@ -49,8 +49,10 @@ def fetch_data_from_db(select_sql, params):
     #print(f"Total number of rows fetched: {len(rows)}")
     return rows
 
-# Steps to compate CSV data with im_sprime_s_prime_with_mutations table data:
-#“All S' by Mutation and Tissue”
+# Steps to compare CSV data with im_sprime_s_prime_with_mutations table data:
+# 1) Download "All S' by Mutation and Tissue” data from web tool
+# 2) Put the downloaded CSV file into the folder where you are running this code.
+# 3) Run this function and check console logs to see the row count comparisons, and number of items that don't match.
 def qa_verify_im_sprime_s_prime_with_mutations_table(data_file_name, gene_id, tissue_name):
     df = build_df(data_file_name)
     r, c = df.shape
@@ -75,9 +77,6 @@ def qa_verify_im_sprime_s_prime_with_mutations_table(data_file_name, gene_id, ti
     #print(f"df_dict length = {len(df_dict)}")
 
     db_items_not_matching_with_csv = []
-    # s_prime.name, s_prime.moa, s_prime.target, s_prime.lower_limit, s_prime.upper_limit,
-    # s_prime.ec50, s_prime.auc, s_prime.row_name, s_prime.screen_id, s_prime.eff,
-    # s_prime.eff_100, s_prime.eff_ec50, s_prime.s_prime, s_prime.ccle_name, mut.tissue, mut.gene_id, mut.mutation_value
     for row in db_data:
         name = row[0]
         row_name = row[7]
@@ -192,5 +191,5 @@ def qa_verify_fnl_sprime_pooled_delta_sprime(data_file_name, gene_id, tissue_nam
 
     return df
 
-qa_verify_fnl_sprime_pooled_delta_sprime("pooled_delta_s_prime.csv", 7300, "LUNG")
+#qa_verify_fnl_sprime_pooled_delta_sprime("pooled_delta_s_prime.csv", 7300, "LUNG")
 #qa_verify_im_sprime_s_prime_with_mutations_table("s_prime_mutation_tissue.csv",  7300, "LUNG")
