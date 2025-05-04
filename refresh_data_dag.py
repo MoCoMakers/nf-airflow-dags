@@ -561,11 +561,9 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
                 ref_mad = median_absolute_deviation(ref_sprime_values) if len(ref_sprime_values) > 0 else 0
                 test_mad = median_absolute_deviation(test_sprime_values) if len(test_sprime_values) > 0 else 0
 
-                #ref_pooled_auc=pd.NamedAgg(column='auc', aggfunc='mean'),
                 ref_pooled_auc = np.mean(ref_auc_values) if len(ref_auc_values) > 0 else 0
                 test_pooled_auc = np.mean(test_auc_values) if len(test_auc_values) > 0 else 0
 
-                #ref_pooled_ec50=pd.NamedAgg(column='ec50', aggfunc='mean'),
                 ref_pooled_ec50 = np.mean(ref_ec50_values) if len(ref_ec50_values) > 0 else 0
                 test_pooled_ec50 = np.mean(test_ec50_values) if len(test_ec50_values) > 0 else 0
 
@@ -583,7 +581,6 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
                 delta_ec50 = ref_pooled_ec50 - test_pooled_ec50
 
                 
-                # compounds_merge['ref_median_s_prime'] - compounds_merge['test_median_s_prime']
                 delta_s_prime_median = ref_median_s_prime - test_median_s_prime
 
                 moa = ','.join(str(s) for s in moa_values_set)

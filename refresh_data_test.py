@@ -579,14 +579,10 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
                 else:
                     test_s_prime_variance = 0.0  # or np.nan, depending on what you want
 
-                #ref_s_prime_variance = np.var(np.array(ref_sprime_values), ddof=1) if len(ref_sprime_values) > 0 else 0
-                #test_s_prime_variance = np.var(np.array(test_sprime_values), ddof=1) if len(test_sprime_values) > 0 else 0
-
                 delta_auc = ref_pooled_auc - test_pooled_auc
                 delta_ec50 = ref_pooled_ec50 - test_pooled_ec50
 
                 
-                # compounds_merge['ref_median_s_prime'] - compounds_merge['test_median_s_prime']
                 delta_s_prime_median = ref_median_s_prime - test_median_s_prime
 
                 moa = ','.join(str(s) for s in moa_values_set)
