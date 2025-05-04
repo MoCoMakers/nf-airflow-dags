@@ -2,12 +2,10 @@ import traceback
 import psycopg2
 from datetime import datetime
 from pathlib import Path
-import csv
 import pandas as pd
 import time
 import numpy as np
-import pickle
-import statistics
+from scipy.stats import mannwhitneyu
 
 
 postgres_host = "XXXX"
@@ -595,10 +593,15 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
                 target = ','.join(str(s) for s in target_values_set)
                 
 
-                # TODO
-                p_val_median_man_whit = 0
-                group_sub = None
+                # Calculate p-value using Mann-Whitney U test
+                p_values = []
+                stat, p_value = mannwhitneyu(ref_sprime_values, test_sprime_values, alternative='two-sided')
+                p_values.append(p_value)
+                    
+                p_val_median_man_whit = p_values[0] if len(p_values) > 0 else 0
 
+                # TODO
+                group_sub = None
                 
                 sensitivity_score = 0
                 sensitivity = 'Equivocal'
