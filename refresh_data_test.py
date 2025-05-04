@@ -10,10 +10,10 @@ import pickle
 import statistics
 
 
-postgres_host = "XXXXX"
-postgres_name = "XXXXX"
-postgres_user = "XXXXX"
-postgres_password = "XXXXX"
+postgres_host = "XXXX"
+postgres_name = "XXXX"
+postgres_user = "XXXX"
+postgres_password = "XXXX"
 
 pg_conn = psycopg2.connect(
         host=postgres_host,
@@ -570,8 +570,19 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
                 ref_pooled_ec50 = np.mean(ref_ec50_values) if len(ref_ec50_values) > 0 else 0
                 test_pooled_ec50 = np.mean(test_ec50_values) if len(test_ec50_values) > 0 else 0
 
-                ref_s_prime_variance = np.var(ref_sprime_values) if len(ref_sprime_values) > 0 else 0
-                test_s_prime_variance = np.var(test_sprime_values) if len(test_sprime_values) > 0 else 0
+
+                if len(ref_sprime_values) > 1:
+                    ref_s_prime_variance = np.var(np.array(ref_sprime_values), ddof=1)
+                else:
+                    ref_s_prime_variance = 0.0  # or np.nan, depending on what you want
+
+                if len(test_sprime_values) > 1:
+                    test_s_prime_variance = np.var(np.array(test_sprime_values), ddof=1)
+                else:
+                    test_s_prime_variance = 0.0  # or np.nan, depending on what you want
+
+                #ref_s_prime_variance = np.var(np.array(ref_sprime_values), ddof=1) if len(ref_sprime_values) > 0 else 0
+                #test_s_prime_variance = np.var(np.array(test_sprime_values), ddof=1) if len(test_sprime_values) > 0 else 0
 
                 delta_auc = ref_pooled_auc - test_pooled_auc
                 delta_ec50 = ref_pooled_ec50 - test_pooled_ec50
