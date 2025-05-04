@@ -56,18 +56,54 @@ im_sprime_s_prime_with_mutations_table_sql = """CREATE TABLE IF NOT EXISTS im_sp
 im_sprime_s_prime_with_mutations_insert_sql = "INSERT INTO im_sprime_s_prime_with_mutations (s_prime_id, cell_line, tissue, gene_id, mutation_value) values (%s,%s,%s,%s,%s)"
 
 
-# Just have these columns in “fnl_sprime_pooled_delta_sprime” table for now:
-# - name
-# - ref_pooled_s_prime = mean of the cell lines matching the filters that have 0 out of 2 damaging mutations,
-# - num_ref_lines
-# - test_pooled_s_prime = mean of the cell lines matching the filters that have 2 out of 2 damaging mutations
-# - num_test_lines
-# - delta_s_prime = ref_pooled_s_prime - test_pooled_s_prime
-fnl_sprime_pooled_delta_sprime_table_sql = """CREATE TABLE IF NOT EXISTS fnl_sprime_pooled_delta_sprime (name VARCHAR(255), ref_pooled_s_prime FLOAT, num_ref_lines INTEGER, test_pooled_s_prime FLOAT, num_test_lines INTEGER, delta_s_prime FLOAT, gene_id INTEGER, tissue VARCHAR(255))"""
-fnl_sprime_pooled_delta_sprime_insert_sql = "INSERT INTO fnl_sprime_pooled_delta_sprime (name, ref_pooled_s_prime, num_ref_lines, test_pooled_s_prime, num_test_lines, delta_s_prime, gene_id, tissue) values (%s,%s,%s,%s,%s,%s,%s,%s)"
+# 1) name	
+# 2) ref_pooled_s_prime	
+# 3) ref_median_s_prime	
+# 4) ref_mad	
+# 5) ref_pooled_auc	
+# 6) ref_pooled_ec50	
+# 7) num_ref_lines	
+# 8) ref_s_prime_variance	
+# 9) test_pooled_s_prime	
+# 10) test_median_s_prime	
+# 11) test_mad	
+# 12) test_pooled_auc	
+# 13) test_pooled_ec50	
+# 14) num_test_lines	
+# 15) test_s_prime_variance	
+# 16) delta_s_prime	
+# 17) delta_auc	
+# 18) delta_ec50	
+# 19) delta_s_prime_median	
+# 20) p_val_median_man_whit	
+# 21) Sensitivity Score	
+# 22) Sensitivity	
+# 23) moa	
+# 24) target	
+# 25) group_sub
+fnl_sprime_pooled_delta_sprime_table_sql = """CREATE TABLE IF NOT EXISTS fnl_sprime_pooled_delta_sprime 
+(name VARCHAR(255), 
+ref_pooled_s_prime FLOAT, 
+ref_median_s_prime FLOAT, 
+ref_mad FLOAT, 
+ref_pooled_auc FLOAT, 
+ref_pooled_ec50 FLOAT, num_ref_lines INTEGER, ref_s_prime_variance FLOAT, test_pooled_s_prime FLOAT, test_median_s_prime FLOAT,
+test_mad FLOAT, test_pooled_auc FLOAT, test_pooled_ec50 FLOAT, 
+num_test_lines INTEGER, test_s_prime_variance FLOAT, delta_s_prime FLOAT, delta_auc FLOAT, delta_ec50 FLOAT, 
+delta_s_prime_median FLOAT, p_val_median_man_whit FLOAT, sensitivity_score INTEGER, sensitivity VARCHAR(50), moa VARCHAR(1000), 
+target VARCHAR(1000), group_sub VARCHAR(1000),
+gene_id INTEGER, tissue VARCHAR(255))"""
+
+fnl_sprime_pooled_delta_sprime_insert_sql = """INSERT INTO fnl_sprime_pooled_delta_sprime (
+name, ref_pooled_s_prime, ref_median_s_prime, ref_mad, ref_pooled_auc, ref_pooled_ec50, num_ref_lines, 
+ref_s_prime_variance, test_pooled_s_prime, test_median_s_prime, test_mad, test_pooled_auc, test_pooled_ec50, 
+num_test_lines, test_s_prime_variance, delta_s_prime, delta_auc, delta_ec50, 
+delta_s_prime_median, p_val_median_man_whit, sensitivity_score, sensitivity, moa, 
+target, group_sub, gene_id, tissue) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
 
 
-source_data_for_fnl_sprime_table = """select distinct s_prime.name, mut.cell_line, s_prime.s_prime, mut.mutation_value from im_sprime_s_prime_with_mutations mut 
+source_data_for_fnl_sprime_table = """select distinct s_prime.name, mut.cell_line, s_prime.s_prime, s_prime.ec50, s_prime.auc, s_prime.moa, s_prime.target, mut.mutation_value 
+from im_sprime_s_prime_with_mutations mut 
 left join im_sprime_solved_s_prime s_prime on s_prime.row_name=mut.cell_line
 where mut.gene_id=%s and mut.tissue=%s and mut.mutation_value in (0, 2)
 and s_prime.ccle_name like %s and s_prime.name in ({})"""
@@ -471,7 +507,7 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
             results = cursor.fetchall()
             print(f"results length = {len(results)}")
             
-            # s_prime.name, mut.cell_line, s_prime.s_prime, mut.mutation_value
+            # s_prime.name, mut.cell_line, s_prime.s_prime, s_prime.ec50, s_prime.auc, s_prime.moa, s_prime.target, mut.mutation_value
             for row in results:
                 if row[0] in s_prime_name_vals_dict.keys():
                     current_val = s_prime_name_vals_dict[row[0]]
@@ -480,23 +516,96 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
                     s_prime_name_vals_dict[row[0]] = [row]
         print(f"s_prime_name_vals_dict length = {len(s_prime_name_vals_dict)}")
         
+        # s_prime.name, mut.cell_line, s_prime.s_prime, s_prime.ec50, s_prime.auc, s_prime.moa, s_prime.target, mut.mutation_value
         for key, value in s_prime_name_vals_dict.items():
             ref_sprime_values = []
             test_sprime_values = []
+            ref_auc_values = []
+            test_auc_values = []
+            ref_ec50_values = []
+            test_ec50_values = []
+            moa_values_set = set()
+            target_values_set = set()
+
             for v in value:
                 s_prime = v[2]
-                mutation_value = v[3]
+                ec50 = v[3]
+                auc = v[4]
+                moa = v[5]
+                target = v[6]
+                mutation_value = v[7]
+
+                moa_values_set.add(moa)
+                target_values_set.add(target)
 
                 if mutation_value == 0:
                     ref_sprime_values.append(s_prime)
+                    ref_ec50_values.append(ec50)
+                    ref_auc_values.append(auc)
                 else:
                     test_sprime_values.append(s_prime)
+                    test_ec50_values.append(ec50)
+                    test_auc_values.append(auc)
 
             if len(ref_sprime_values) > 0 and len(test_sprime_values) > 0:
                 ref_pooled_s_prime = np.mean(ref_sprime_values) if len(ref_sprime_values) > 0 else 0
                 test_pooled_s_prime = np.mean(test_sprime_values) if len(test_sprime_values) > 0 else 0
+                ref_median_s_prime = np.median(ref_sprime_values) if len(ref_sprime_values) > 0 else 0
+                test_median_s_prime = np.median(test_sprime_values) if len(test_sprime_values) > 0 else 0
 
-                pooled_delta_s_prime_dict[key] = (key, ref_pooled_s_prime, len(ref_sprime_values), test_pooled_s_prime, len(test_sprime_values), ref_pooled_s_prime - test_pooled_s_prime, gene_id, tissue)   
+                num_ref_lines = len(ref_sprime_values)
+                num_test_lines = len(test_sprime_values) 
+                delta_s_prime = ref_pooled_s_prime - test_pooled_s_prime
+
+                ref_mad = median_absolute_deviation(ref_sprime_values) if len(ref_sprime_values) > 0 else 0
+                test_mad = median_absolute_deviation(test_sprime_values) if len(test_sprime_values) > 0 else 0
+
+                #ref_pooled_auc=pd.NamedAgg(column='auc', aggfunc='mean'),
+                ref_pooled_auc = np.mean(ref_auc_values) if len(ref_auc_values) > 0 else 0
+                test_pooled_auc = np.mean(test_auc_values) if len(test_auc_values) > 0 else 0
+
+                #ref_pooled_ec50=pd.NamedAgg(column='ec50', aggfunc='mean'),
+                ref_pooled_ec50 = np.mean(ref_ec50_values) if len(ref_ec50_values) > 0 else 0
+                test_pooled_ec50 = np.mean(test_ec50_values) if len(test_ec50_values) > 0 else 0
+
+                ref_s_prime_variance = np.var(ref_sprime_values) if len(ref_sprime_values) > 0 else 0
+                test_s_prime_variance = np.var(test_sprime_values) if len(test_sprime_values) > 0 else 0
+
+                delta_auc = ref_pooled_auc - test_pooled_auc
+                delta_ec50 = ref_pooled_ec50 - test_pooled_ec50
+
+                
+                # compounds_merge['ref_median_s_prime'] - compounds_merge['test_median_s_prime']
+                delta_s_prime_median = ref_median_s_prime - test_median_s_prime
+
+                moa = ','.join(str(s) for s in moa_values_set)
+                target = ','.join(str(s) for s in target_values_set)
+                
+
+                # TODO
+                p_val_median_man_whit = 0
+                group_sub = None
+
+                
+                sensitivity_score = 0
+                sensitivity = 'Equivocal'
+                if delta_s_prime < -0.5:
+                    sensitivity_score = -1
+                    sensitivity = 'Sensitive'
+                else:
+                    sensitivity_score = 1
+                    sensitivity = 'Resistant'
+
+                # name, ref_pooled_s_prime, ref_median_s_prime, ref_mad, ref_pooled_auc, ref_pooled_ec50, num_ref_lines, 
+                # ref_s_prime_variance, test_pooled_s_prime, test_median_s_prime, test_mad, test_pooled_auc, test_pooled_ec50, 
+                # num_test_lines, test_s_prime_variance, delta_s_prime, delta_auc, delta_ec50, 
+                # delta_s_prime_median, p_val_median_man_whit, sensitivity_score, sensitivity, moa, 
+                # target, group_sub, gene_id, tissue
+                pooled_delta_s_prime_dict[key] = (key, ref_pooled_s_prime, ref_median_s_prime, ref_mad, ref_pooled_auc, ref_pooled_ec50, 
+                num_ref_lines, ref_s_prime_variance, test_pooled_s_prime, test_median_s_prime, test_mad, test_pooled_auc, test_pooled_ec50, 
+                num_test_lines, test_s_prime_variance, delta_s_prime, delta_auc, delta_ec50, 
+                delta_s_prime_median, p_val_median_man_whit, sensitivity_score, sensitivity, moa, 
+                target, group_sub, gene_id, tissue)  
 
         print(f"pooled_delta_s_prime_dict length = {len(pooled_delta_s_prime_dict)}")
         insert_rows = list(pooled_delta_s_prime_dict.values())
@@ -513,6 +622,14 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
         end_time_main = datetime.now()
         print(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
 
+def median_absolute_deviation(data):
+        # Calculate the median of the data
+        median = np.median(data)
+        # Calculate the absolute deviations from the median
+        abs_deviation = np.abs(data - median)
+        # Compute the median of the absolute deviations
+        mad = np.median(abs_deviation)
+        return mad
 
 def batch(iterable, n):
     l = len(iterable)
