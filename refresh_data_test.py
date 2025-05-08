@@ -6,12 +6,15 @@ import pandas as pd
 import time
 import numpy as np
 from scipy.stats import mannwhitneyu
+import utils  # Now this should work
+
+_config = utils.get_config_data_refresh()
 
 
-postgres_host = "XXXX"
-postgres_name = "XXXX"
-postgres_user = "XXXX"
-postgres_password = "XXXX"
+postgres_host = _config['db']['host']
+postgres_name = _config['db']['name']
+postgres_user = _config['db']['username']
+postgres_password = _config['db']['password']
 
 pg_conn = psycopg2.connect(
         host=postgres_host,
@@ -493,6 +496,20 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
 
         print(f"names_for_tissue length = {len(names_for_tissue)}")
 
+        target = fetch_df('Manual_ontology.csv')
+        df_reference_ontolgy = pd.DataFrame (columns = ["Group", "Sub", "Gene"])
+
+        Group = None
+        for i in range(len(target)):
+            Current_group = str(target.loc[i,'Group']).strip()
+            if Current_group != "nan": 
+                Group = Current_group 
+            df_reference_ontolgy.loc[i] = [Group, target.loc[i,'Sub'], target.loc[i,'Gene']]
+
+        rows_to_append = []
+        genes_not_in_manual_ontology = []
+    
+
         pooled_delta_s_prime_dict = {}
         s_prime_name_vals_dict = {}
         for name_tissue_row_batch in batch(names_for_tissue, 100):
@@ -598,6 +615,30 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
 
                 # TODO
                 group_sub = None
+
+                # Iterate through dm_merged and update rows_to_append and dm_merged
+                group_sub_list = []  # Temporary list to hold group_sub strings for current row
+                for gene in target_values_set:
+                    if gene in df_reference_ontolgy['Gene'].values:
+                        group = df_reference_ontolgy.loc[df_reference_ontolgy['Gene'] == gene, 'Group'].values[0]
+                        sub = df_reference_ontolgy.loc[df_reference_ontolgy['Gene'] == gene, 'Sub'].values[0]
+                        group_sub_string = f"{group} | {sub}"
+                        if group_sub_string not in group_sub_list:
+                            group_sub_list.append(group_sub_string)
+                            
+                        # Append to rows_to_append
+                        rows_to_append.append({
+                            'Compound': key,
+                            'Group': group,
+                            'Sub': sub,
+                            'Gene': gene
+                            })
+                    else:
+                        if gene not in genes_not_in_manual_ontology:
+                            genes_not_in_manual_ontology.append(gene)
+                
+                    # Join all group_sub strings for the current row and update dm_merged
+                    group_sub = ','.join(str(s) for s in group_sub_list)
                 
                 sensitivity_score = 0
                 sensitivity = 'Equivocal'
