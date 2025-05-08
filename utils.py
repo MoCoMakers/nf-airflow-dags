@@ -8,12 +8,20 @@ DWH_DATA_REFRESH = 'dwh-data-refresh'
 
 
 def get_config_data_refresh():
-    return get_config(filename='db_queries.ini')
+    return get_config(filename='dwh_data_refresh.ini')
 
 
 def get_config(filename):
     parser = ConfigParser()
-    parser.read(filename)
+    
+    # This resolves the path relative to utils.py
+    config_path = pathlib.Path(__file__).parent / filename
+
+    if not config_path.exists():
+        logger.error(f"Config file not found at: {config_path}")
+        return {}
+
+    parser.read(config_path)
 
     config_dict = {}
 
