@@ -9,15 +9,23 @@ import pandas as pd
 import time
 import numpy as np
 from scipy.stats import mannwhitneyu
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+import utils  # Now this should work
 
-secondary_dose_curve_raw_table_sql = """CREATE TABLE IF NOT EXISTS im_dep_raw_secondary_dose_curve 
-(broad_id VARCHAR(255), depmap_id VARCHAR(255), ccle_name VARCHAR(1000), screen_id VARCHAR(50),
-upper_limit INTEGER, lower_limit FLOAT, slope FLOAT,
-r2 FLOAT, auc FLOAT, ec50 FLOAT, ic50 FLOAT,
-name VARCHAR(255), moa VARCHAR(1000), target VARCHAR(1000),
-disease_area VARCHAR(1000), indication VARCHAR(1000),
-smiles VARCHAR(1500), phase VARCHAR(255), passed_str_profiling boolean, row_name VARCHAR(255))"""
+_config = utils.get_config_data_refresh()
+
+secondary_dose_curve_raw_table_sql = _config['sql']['secondary_dose_curve_raw_table_sql']
+
+# secondary_dose_curve_raw_table_sql = """CREATE TABLE IF NOT EXISTS im_dep_raw_secondary_dose_curve 
+# (broad_id VARCHAR(255), depmap_id VARCHAR(255), ccle_name VARCHAR(1000), screen_id VARCHAR(50),
+# upper_limit INTEGER, lower_limit FLOAT, slope FLOAT,
+# r2 FLOAT, auc FLOAT, ec50 FLOAT, ic50 FLOAT,
+# name VARCHAR(255), moa VARCHAR(1000), target VARCHAR(1000),
+# disease_area VARCHAR(1000), indication VARCHAR(1000),
+# smiles VARCHAR(1500), phase VARCHAR(255), passed_str_profiling boolean, row_name VARCHAR(255))"""
 
 secondary_dose_curve_raw_insert_sql = """INSERT INTO im_dep_raw_secondary_dose_curve 
 (broad_id, depmap_id, ccle_name, screen_id, upper_limit, lower_limit, 
@@ -503,7 +511,7 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
         s_prime_name_vals_dict = {}
         for name_tissue_row_batch in batch(names_for_tissue, 100):
             s_prime_names = [row[0] for row in name_tissue_row_batch]
-            formatted_s_prime_names = ', '.join(f"'{w.replace("'", "''")}'" for w in s_prime_names)
+            formatted_s_prime_names = ', '.join(f"""'{w.replace("'", "''")}'""" for w in s_prime_names)
             cursor.execute(source_data_for_fnl_sprime_table.format(formatted_s_prime_names), (gene_id, tissue, "%_"+tissue))
             results = cursor.fetchall()
             print(f"results length = {len(results)}")
