@@ -348,8 +348,8 @@ def refresh_mutations_by_cell_line(gene_id_list):
 
         cell_lines = list(set([x[1] for x in s_prime_rows]))
 
-        #logger.info(f"Total number of unique cell lines: {len(cell_lines)}")
-        #logger.info(f"Total number of unique tissues: {len(tissue_names)}")
+        logger.info(f"Total number of unique cell lines: {len(cell_lines)}")
+        logger.info(f"Total number of unique tissues: {len(tissue_names)}")
 
         for cell_line_batch in utils.batch(cell_lines, 5): 
             # 4) Fetch mutation values for all cell lines
@@ -385,9 +385,10 @@ def refresh_mutations_by_cell_line(gene_id_list):
                             s_prime_with_mutations_rows.extend(insert_rows)
 
             logger.info(f"Target cell lines: {cell_line_batch}")
-            cursor.executemany(data_insert_sql, s_prime_with_mutations_rows)
-            pg_conn.commit()
-            logger.info(f"Total number of rows inserted to {table_name} table: {len(s_prime_with_mutations_rows)}")
+            for rows_batch in utils.batch(insert_rows, 1000):
+                cursor.executemany(data_insert_sql, rows_batch)
+                pg_conn.commit()
+            logger.info(f"Total number of rows inserted to {table_name} table: {len(insert_rows)}")
     except Exception as e:
         traceback.print_exc() 
         pg_conn.rollback()
