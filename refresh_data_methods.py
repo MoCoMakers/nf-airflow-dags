@@ -93,7 +93,7 @@ def refresh_omic_genes():
 
         cursor.execute(im_omics_gene_table_sql)
         pg_conn.commit()
-        print(f"DB table {table_name} has been created.")
+        logger.info(f"DB table {table_name} has been created.")
 
         damaging_mutations = pd.read_csv(input_folder/data_file_name)
 
@@ -103,7 +103,7 @@ def refresh_omic_genes():
         cursor.executemany(im_omics_gene_insert_sql, gene_tuples)
         pg_conn.commit()
 
-        print(f"Genes length: {len(genes)}")
+        logger.info(f"Genes length: {len(genes)}")
     except Exception as e:
         traceback.print_exc() 
         pg_conn.rollback()
@@ -181,13 +181,13 @@ def refresh_damaging_mutations():
     cursor = pg_conn.cursor()
 
     try:
-        print(f"Data refresh process started for {table_name}.")
+        logger.info(f"Data refresh process started for {table_name}.")
         cursor.execute(drop_table_sql)
         pg_conn.commit()
         
         cursor.execute(table_create_sql)
         pg_conn.commit()
-        print(f"DB table {table_name} has been created.")
+        logger.info(f"DB table {table_name} has been created.")
 
         damaging_mutations = pd.read_csv(input_folder/data_file_name)
 
@@ -209,14 +209,14 @@ def refresh_damaging_mutations():
                 res = [(cell_line, omic_gene_dic.get(x), y) for x, y in zip(genes, mutation_vals)]
                 insert_rows.extend(res)
             
-            start_time = datetime.now()
+            #start_time = datetime.now()
             cursor.executemany(data_insert_sql, insert_rows)
             pg_conn.commit()
-            end_time = datetime.now()
-            print(f"Duration to insert {len(insert_rows)} rows: {(end_time - start_time).seconds} seconds")
+            #end_time = datetime.now()
+            #logger.info(f"Duration to insert {len(insert_rows)} rows: {(end_time - start_time).seconds} seconds")
             total_rows = total_rows + len(insert_rows)
             
-        print(f"Total number of rows inserted to {table_name} = {total_rows}")
+        logger.info(f"Total number of rows inserted to {table_name} = {total_rows}")
     except Exception as e:
         traceback.print_exc() 
         pg_conn.rollback()
@@ -224,7 +224,7 @@ def refresh_damaging_mutations():
         pg_conn.commit()
         cursor.close()
         end_time_main = datetime.now()
-        print(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
+        logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
 
 # TASK_3:
 #Solve S' for all entries in response-curve-parameters
@@ -240,14 +240,14 @@ def refresh_s_prime():
     cursor = pg_conn.cursor()
 
     try:
-        print(f"Data refresh process started for {table_name}.")
+        logger.info(f"Data refresh process started for {table_name}.")
         
         cursor.execute(drop_table_sql)
         pg_conn.commit()
         
         cursor.execute(table_create_sql)
         pg_conn.commit()
-        print(f"DB table {table_name} has been created.")
+        logger.info(f"DB table {table_name} has been created.")
 
         secondary_raw_data = fetch_data_from_db(secondary_dose_curve_raw_select)
         
@@ -280,9 +280,9 @@ def refresh_s_prime():
             
             cursor.executemany(data_insert_sql, insert_rows)
             pg_conn.commit()
-            print(f"{len(insert_rows)} rows inserted into {table_name}")
+            #logger.info(f"{len(insert_rows)} rows inserted into {table_name}")
             total_rows = total_rows + len(insert_rows)
-        print(f"Total # of rows inserted into {table_name}: total_rows")
+        logger.info(f"Total # of rows inserted into {table_name}: total_rows")
     except Exception as e:
         traceback.print_exc() 
         pg_conn.rollback()
@@ -290,7 +290,7 @@ def refresh_s_prime():
         pg_conn.commit()
         cursor.close()
         end_time_main = datetime.now()
-        print(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
+        logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
 
 #Task_4: Create a merged table that brings in Mutation Value by cell line (ACH-….)
 #Table name -> im_sprime_s_prime_with_mutations
@@ -309,7 +309,7 @@ def refresh_mutations_by_cell_line(gene_id_list):
     pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
     try:
-        print(f"Data refresh process started for {table_name}.")
+        logger.info(f"Data refresh process started for {table_name}.")
 
         # 1) Drop existing table
         cursor.execute(drop_table_sql)
@@ -318,7 +318,7 @@ def refresh_mutations_by_cell_line(gene_id_list):
         # 2) Create a new table
         cursor.execute(table_create_sql)
         pg_conn.commit()
-        print(f"DB table {table_name} has been created.")
+        logger.info(f"DB table {table_name} has been created.")
 
 
         # 3) Fetch s_prime_rows
@@ -339,15 +339,15 @@ def refresh_mutations_by_cell_line(gene_id_list):
 
         cell_lines = list(set([x[1] for x in s_prime_rows]))
 
-        print(f"Total number of unique cell lines in solved_s_prime table: {len(cell_lines)}")
-        print(f"Total number of unique tissues: {len(tissue_names)}")
+        logger.info(f"Total number of unique cell lines in solved_s_prime table: {len(cell_lines)}")
+        logger.info(f"Total number of unique tissues: {len(tissue_names)}")
 
     
         for cell_line_batch in utils.batch(cell_lines, 5): 
             # 4) Fetch mutation values for all cell lines
             # row = (cell_line, gene_id, mutation_value)
             mutation_values_for_cell_lines = get_mutation_values_for_cell_lines(cell_line_batch)
-            print(f"Total # of cell line mutation values for {cell_line_batch}: {len(mutation_values_for_cell_lines)}")
+            logger.info(f"Total # of cell line mutation values for {cell_line_batch}: {len(mutation_values_for_cell_lines)}")
             cell_line_mutations_dict = {}
             for cell_line, gene_id, mutation_value in mutation_values_for_cell_lines:
                 if cell_line in cell_line_mutations_dict.keys():
@@ -357,7 +357,7 @@ def refresh_mutations_by_cell_line(gene_id_list):
                 else:
                     cell_line_mutations_dict[cell_line] = [(gene_id, mutation_value)]
 
-            print(f"cell_line_mutations_dict length: {len(cell_line_mutations_dict)}")
+            logger.info(f"cell_line_mutations_dict length: {len(cell_line_mutations_dict)}")
 
             # 5) Prepare insert rows for im_sprime_s_prime_with_mutations table
             # row = (s_prime_id, cell_line, tissue_name, gene_id, mutation_value)
@@ -376,11 +376,11 @@ def refresh_mutations_by_cell_line(gene_id_list):
                             insert_rows = [tuple([row[0], row[1], s_prime_tissue_dict[row[0]]]+list(mut_val))]
                             s_prime_with_mutations_rows.extend(insert_rows)
 
-            print(f"Target cell lines: {cell_line_batch}")
-            print(f"Target gene ids: {gene_id_list}")
+            logger.info(f"Target cell lines: {cell_line_batch}")
+            logger.info(f"Target gene ids: {gene_id_list}")
             cursor.executemany(data_insert_sql, s_prime_with_mutations_rows)
             pg_conn.commit()
-            print(f"Total number of rows inserted to {table_name} table: {len(s_prime_with_mutations_rows)}")
+            logger.info(f"Total number of rows inserted to {table_name} table: {len(s_prime_with_mutations_rows)}")
     except Exception as e:
         traceback.print_exc() 
         pg_conn.rollback()
@@ -388,7 +388,7 @@ def refresh_mutations_by_cell_line(gene_id_list):
         pg_conn.commit()
         cursor.close()
         end_time_main = datetime.now()
-        print(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
+        logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
 
 # Task_5: Create the Pooled delta S' results table from 4 by applying these filters:
 # 	- LUNG
@@ -414,12 +414,12 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
         # 2) Create a new table
         cursor.execute(table_create_sql)
         pg_conn.commit()
-        print(f"DB table {table_name} has been created.")
+        logger.info(f"DB table {table_name} has been created.")
 
         cursor.execute(names_for_tissue_select, ("%_"+tissue,))
         names_for_tissue = cursor.fetchall()
 
-        print(f"names_for_tissue length = {len(names_for_tissue)}")
+        logger.info(f"names_for_tissue length = {len(names_for_tissue)}")
 
         pooled_delta_s_prime_dict = {}
         s_prime_name_vals_dict = {}
@@ -428,7 +428,7 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
             formatted_s_prime_names = ', '.join(f"""'{w.replace("'", "''")}'""" for w in s_prime_names)
             cursor.execute(source_data_for_fnl_sprime_table.format(formatted_s_prime_names), (gene_id, tissue, "%_"+tissue))
             results = cursor.fetchall()
-            print(f"results length = {len(results)}")
+            logger.info(f"results length = {len(results)}")
             
             # s_prime.name, mut.cell_line, s_prime.s_prime, s_prime.ec50, s_prime.auc, s_prime.moa, s_prime.target, mut.mutation_value
             for row in results:
@@ -437,7 +437,7 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
                     current_val.append(row)
                 else:
                     s_prime_name_vals_dict[row[0]] = [row]
-        print(f"s_prime_name_vals_dict length = {len(s_prime_name_vals_dict)}")
+        logger.info(f"s_prime_name_vals_dict length = {len(s_prime_name_vals_dict)}")
         
         # s_prime.name, mut.cell_line, s_prime.s_prime, s_prime.ec50, s_prime.auc, s_prime.moa, s_prime.target, mut.mutation_value
         for key, value in s_prime_name_vals_dict.items():
@@ -534,12 +534,12 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
                 delta_s_prime_median, p_val_median_man_whit, sensitivity_score, sensitivity, moa, 
                 target, group_sub, gene_id, tissue)  
 
-        print(f"pooled_delta_s_prime_dict length = {len(pooled_delta_s_prime_dict)}")
+        logger.info(f"pooled_delta_s_prime_dict length = {len(pooled_delta_s_prime_dict)}")
         insert_rows = list(pooled_delta_s_prime_dict.values())
         for rows_batch in utils.batch(insert_rows, 250):
             cursor.executemany(data_insert_sql, rows_batch)
             pg_conn.commit()
-        print(f"Total number of rows inserted to {table_name} table: {len(pooled_delta_s_prime_dict)}")
+        logger.info(f"Total number of rows inserted to {table_name} table: {len(pooled_delta_s_prime_dict)}")
     except Exception as e:
         traceback.print_exc()
         pg_conn.rollback()
@@ -547,7 +547,7 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
         pg_conn.commit()
         cursor.close()
         end_time_main = datetime.now()
-        print(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
+        logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
 
 def median_absolute_deviation(data):
         # Calculate the median of the data
