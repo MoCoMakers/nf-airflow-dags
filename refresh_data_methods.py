@@ -66,16 +66,14 @@ pg_conn = pg_hook.get_conn()
 
 
 def fetch_data_from_db(select_sql):
-    if pg_conn is None:
-        pg_conn = pg_hook.get_conn()
+    pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
     cursor.execute(select_sql)
     rows = cursor.fetchall()
     return rows
 
 def get_mutation_values_for_cell_lines(cell_lines):
-    if pg_conn is None:
-        pg_conn = pg_hook.get_conn()
+    pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
     formatted_cell_lines = ', '.join(f"'{w}'" for w in cell_lines)
     cursor.execute(mutation_values_for_cell_lines.format(formatted_cell_lines))
@@ -88,8 +86,7 @@ def refresh_omic_genes():
     table_name = "im_omics_genes"
     drop_table_sql = f"drop table if exists {table_name}"
 
-    if pg_conn is None:
-        pg_conn = pg_hook.get_conn()
+    pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
 
     try:
@@ -132,8 +129,7 @@ def refresh_secondary_dose_curve():
     drop_table_sql = f"drop table if exists {table_name}"
         
     input_folder = Path(file_path)
-    if pg_conn is None:
-        pg_conn = pg_hook.get_conn()
+    pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
 
     try:
@@ -181,8 +177,7 @@ def refresh_s_prime():
     data_insert_sql = im_sprime_solved_s_prime_insert_sql
     drop_table_sql = f"drop table if exists {table_name}"
 
-    if pg_conn is None:
-        pg_conn = pg_hook.get_conn()
+    pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
 
     try:
@@ -251,8 +246,7 @@ def refresh_damaging_mutations():
     input_folder = Path(DEP_PUBLIC_PATH)
     data_file_name = OMICS_MUTATIONS_MATRIX
 
-    if pg_conn is None:
-        pg_conn = pg_hook.get_conn()
+    pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
 
     try:
@@ -318,8 +312,7 @@ def refresh_mutations_by_cell_line(gene_id_list):
     data_insert_sql = im_sprime_s_prime_with_mutations_insert_sql
     drop_table_sql = f"drop table if exists {table_name}"
 
-    if pg_conn is None:
-        pg_conn = pg_hook.get_conn()
+    pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
     try:
         logger.info(f"Data refresh process started for {table_name}.")
@@ -429,8 +422,7 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
     data_insert_sql = fnl_sprime_pooled_delta_sprime_insert_sql
     drop_table_sql = f"drop table if exists {table_name}"
 
-    if pg_conn is None:
-        pg_conn = pg_hook.get_conn()
+    pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
 
     try:
