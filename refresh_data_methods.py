@@ -62,16 +62,20 @@ pg_hook = PostgresHook(postgres_conn_id='Comp_Bio_Hub_Postgres', schema='public'
 # Define the logger at the module level
 logger = logging.getLogger(__name__)  # This logger will be used across all functions
 
+pg_conn = pg_hook.get_conn()
+
 
 def fetch_data_from_db(select_sql):
-    pg_conn = pg_hook.get_conn()
+    if pg_conn is None:
+        pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
     cursor.execute(select_sql)
     rows = cursor.fetchall()
     return rows
 
 def get_mutation_values_for_cell_lines(cell_lines):
-    pg_conn = pg_hook.get_conn()
+    if pg_conn is None:
+        pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
     formatted_cell_lines = ', '.join(f"'{w}'" for w in cell_lines)
     cursor.execute(mutation_values_for_cell_lines.format(formatted_cell_lines))
@@ -84,7 +88,8 @@ def refresh_omic_genes():
     table_name = "im_omics_genes"
     drop_table_sql = f"drop table if exists {table_name}"
 
-    pg_conn = pg_hook.get_conn()
+    if pg_conn is None:
+        pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
 
     try:
@@ -127,7 +132,8 @@ def refresh_secondary_dose_curve():
     drop_table_sql = f"drop table if exists {table_name}"
         
     input_folder = Path(file_path)
-    pg_conn = pg_hook.get_conn()
+    if pg_conn is None:
+        pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
 
     try:
@@ -166,6 +172,74 @@ def refresh_secondary_dose_curve():
 
 
 # TASK_2:
+#Solve S' for all entries in response-curve-parameters
+#Table name -> im_sprime_solved_s_prime
+def refresh_s_prime():
+    start_time_main = datetime.now()
+    table_name = "im_sprime_solved_s_prime"
+    table_create_sql = im_sprime_solved_s_prime_table_sql
+    data_insert_sql = im_sprime_solved_s_prime_insert_sql
+    drop_table_sql = f"drop table if exists {table_name}"
+
+    if pg_conn is None:
+        pg_conn = pg_hook.get_conn()
+    cursor = pg_conn.cursor()
+
+    try:
+        logger.info(f"Data refresh process started for {table_name}.")
+        
+        cursor.execute(drop_table_sql)
+        pg_conn.commit()
+        
+        cursor.execute(table_create_sql)
+        pg_conn.commit()
+        logger.info(f"DB table {table_name} has been created.")
+
+        secondary_raw_data = fetch_data_from_db(secondary_dose_curve_raw_select)
+        
+        total_rows = 0
+        for rows_batch in utils.batch(secondary_raw_data, 10000):
+            insert_rows = []
+            for row in rows_batch:
+
+                # Derive EFF (upper_limit - lower_limit) 
+                #df['EFF'] = df['upper_limit'] - df['lower_limit']
+                EFF = row[4]  - row[5]
+
+                # Derive EFF*100
+                #df['EFF*100'] = df['EFF'] * 100
+                EFF_100 = EFF * 100
+
+                # Derive EFF/EC50
+                #df['EFF/EC50'] = df['EFF'] / df['ec50']
+                EFF_EC50 = EFF / row[9]
+
+                # Derive S'
+                # ASINH((EFF*100)/EC50)
+                #df["S'"] = np.arcsinh(df['EFF*100'] / df['ec50'])
+                S_PRIME = np.arcsinh(EFF_100 / row[9])
+
+                new_row_values = list(row)
+                new_row_values.extend([EFF, EFF_100, EFF_EC50, S_PRIME])
+
+                insert_rows.append(tuple(new_row_values))
+            
+            cursor.executemany(data_insert_sql, insert_rows)
+            pg_conn.commit()
+            #logger.info(f"{len(insert_rows)} rows inserted into {table_name}")
+            total_rows = total_rows + len(insert_rows)
+        logger.info(f"Total # of rows inserted into {table_name}: {total_rows}")
+    except Exception as e:
+        traceback.print_exc() 
+        pg_conn.rollback()
+    finally:
+        pg_conn.commit()
+        cursor.close()
+        end_time_main = datetime.now()
+        logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
+
+
+# TASK_3:
 #Load OmicsSomaticMutationsMatrixDamaging.csv from ~/nf_streamlit/app/data
 #Table name -> im_dep_sprime_damaging_mutations
 def refresh_damaging_mutations():
@@ -177,7 +251,8 @@ def refresh_damaging_mutations():
     input_folder = Path(DEP_PUBLIC_PATH)
     data_file_name = OMICS_MUTATIONS_MATRIX
 
-    pg_conn = pg_hook.get_conn()
+    if pg_conn is None:
+        pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
 
     try:
@@ -226,71 +301,6 @@ def refresh_damaging_mutations():
         end_time_main = datetime.now()
         logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
 
-# TASK_3:
-#Solve S' for all entries in response-curve-parameters
-#Table name -> im_sprime_solved_s_prime
-def refresh_s_prime():
-    start_time_main = datetime.now()
-    table_name = "im_sprime_solved_s_prime"
-    table_create_sql = im_sprime_solved_s_prime_table_sql
-    data_insert_sql = im_sprime_solved_s_prime_insert_sql
-    drop_table_sql = f"drop table if exists {table_name}"
-
-    pg_conn = pg_hook.get_conn()
-    cursor = pg_conn.cursor()
-
-    try:
-        logger.info(f"Data refresh process started for {table_name}.")
-        
-        cursor.execute(drop_table_sql)
-        pg_conn.commit()
-        
-        cursor.execute(table_create_sql)
-        pg_conn.commit()
-        logger.info(f"DB table {table_name} has been created.")
-
-        secondary_raw_data = fetch_data_from_db(secondary_dose_curve_raw_select)
-        
-        total_rows = 0
-        for rows_batch in utils.batch(secondary_raw_data, 10000):
-            insert_rows = []
-            for row in rows_batch:
-
-                # Derive EFF (upper_limit - lower_limit) 
-                #df['EFF'] = df['upper_limit'] - df['lower_limit']
-                EFF = row[4]  - row[5]
-
-                # Derive EFF*100
-                #df['EFF*100'] = df['EFF'] * 100
-                EFF_100 = EFF * 100
-
-                # Derive EFF/EC50
-                #df['EFF/EC50'] = df['EFF'] / df['ec50']
-                EFF_EC50 = EFF / row[9]
-
-                # Derive S'
-                # ASINH((EFF*100)/EC50)
-                #df["S'"] = np.arcsinh(df['EFF*100'] / df['ec50'])
-                S_PRIME = np.arcsinh(EFF_100 / row[9])
-
-                new_row_values = list(row)
-                new_row_values.extend([EFF, EFF_100, EFF_EC50, S_PRIME])
-
-                insert_rows.append(tuple(new_row_values))
-            
-            cursor.executemany(data_insert_sql, insert_rows)
-            pg_conn.commit()
-            #logger.info(f"{len(insert_rows)} rows inserted into {table_name}")
-            total_rows = total_rows + len(insert_rows)
-        logger.info(f"Total # of rows inserted into {table_name}: total_rows")
-    except Exception as e:
-        traceback.print_exc() 
-        pg_conn.rollback()
-    finally:
-        pg_conn.commit()
-        cursor.close()
-        end_time_main = datetime.now()
-        logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
 
 #Task_4: Create a merged table that brings in Mutation Value by cell line (ACH-….)
 #Table name -> im_sprime_s_prime_with_mutations
@@ -306,7 +316,8 @@ def refresh_mutations_by_cell_line(gene_id_list):
     data_insert_sql = im_sprime_s_prime_with_mutations_insert_sql
     drop_table_sql = f"drop table if exists {table_name}"
 
-    pg_conn = pg_hook.get_conn()
+    if pg_conn is None:
+        pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
     try:
         logger.info(f"Data refresh process started for {table_name}.")
@@ -403,7 +414,8 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
     data_insert_sql = fnl_sprime_pooled_delta_sprime_insert_sql
     drop_table_sql = f"drop table if exists {table_name}"
 
-    pg_conn = pg_hook.get_conn()
+    if pg_conn is None:
+        pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
 
     try:
@@ -414,21 +426,40 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
         # 2) Create a new table
         cursor.execute(table_create_sql)
         pg_conn.commit()
-        logger.info(f"DB table {table_name} has been created.")
+        print(f"DB table {table_name} has been created.")
 
         cursor.execute(names_for_tissue_select, ("%_"+tissue,))
         names_for_tissue = cursor.fetchall()
 
         logger.info(f"names_for_tissue length = {len(names_for_tissue)}")
 
+        target = fetch_df('Manual_ontology.csv')
+        df_reference_ontolgy = pd.DataFrame (columns = ["Group", "Sub", "Gene"])
+
+        Group = None
+        for i in range(len(target)):
+            Current_group = str(target.loc[i,'Group']).strip()
+            if Current_group != "nan": 
+                Group = Current_group 
+            df_reference_ontolgy.loc[i] = [Group, target.loc[i,'Sub'], target.loc[i,'Gene']]
+
+        rows_to_append = []
+        genes_not_in_manual_ontology = []
+    
+
         pooled_delta_s_prime_dict = {}
         s_prime_name_vals_dict = {}
         for name_tissue_row_batch in utils.batch(names_for_tissue, 100):
             s_prime_names = [row[0] for row in name_tissue_row_batch]
-            formatted_s_prime_names = ', '.join(f"""'{w.replace("'", "''")}'""" for w in s_prime_names)
-            cursor.execute(source_data_for_fnl_sprime_table.format(formatted_s_prime_names), (gene_id, tissue, "%_"+tissue))
-            results = cursor.fetchall()
-            logger.info(f"results length = {len(results)}")
+            formatted_s_prime_names = ', '.join(f"'{w.replace("'", "''")}'" for w in s_prime_names)
+            try:
+                cursor.execute(source_data_for_fnl_sprime_table.format(formatted_s_prime_names), (gene_id, tissue, "%_"+tissue))
+                results = cursor.fetchall()
+                logger.info(f"results length = {len(results)}")
+            except Exception as e:
+                traceback.print_exc()
+                logger.info(f"formatted_s_prime_names = {formatted_s_prime_names}")
+            
             
             # s_prime.name, mut.cell_line, s_prime.s_prime, s_prime.ec50, s_prime.auc, s_prime.moa, s_prime.target, mut.mutation_value
             for row in results:
@@ -483,11 +514,14 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
                 ref_mad = median_absolute_deviation(ref_sprime_values) if len(ref_sprime_values) > 0 else 0
                 test_mad = median_absolute_deviation(test_sprime_values) if len(test_sprime_values) > 0 else 0
 
+                #ref_pooled_auc=pd.NamedAgg(column='auc', aggfunc='mean'),
                 ref_pooled_auc = np.mean(ref_auc_values) if len(ref_auc_values) > 0 else 0
                 test_pooled_auc = np.mean(test_auc_values) if len(test_auc_values) > 0 else 0
 
+                #ref_pooled_ec50=pd.NamedAgg(column='ec50', aggfunc='mean'),
                 ref_pooled_ec50 = np.mean(ref_ec50_values) if len(ref_ec50_values) > 0 else 0
                 test_pooled_ec50 = np.mean(test_ec50_values) if len(test_ec50_values) > 0 else 0
+
 
                 if len(ref_sprime_values) > 1:
                     ref_s_prime_variance = np.var(np.array(ref_sprime_values), ddof=1)
@@ -518,6 +552,30 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
 
                 # TODO
                 group_sub = None
+
+                # Iterate through dm_merged and update rows_to_append and dm_merged
+                group_sub_list = []  # Temporary list to hold group_sub strings for current row
+                for gene in target_values_set:
+                    if gene in df_reference_ontolgy['Gene'].values:
+                        group = df_reference_ontolgy.loc[df_reference_ontolgy['Gene'] == gene, 'Group'].values[0]
+                        sub = df_reference_ontolgy.loc[df_reference_ontolgy['Gene'] == gene, 'Sub'].values[0]
+                        group_sub_string = f"{group} | {sub}"
+                        if group_sub_string not in group_sub_list:
+                            group_sub_list.append(group_sub_string)
+                            
+                        # Append to rows_to_append
+                        rows_to_append.append({
+                            'Compound': key,
+                            'Group': group,
+                            'Sub': sub,
+                            'Gene': gene
+                            })
+                    else:
+                        if gene not in genes_not_in_manual_ontology:
+                            genes_not_in_manual_ontology.append(gene)
+                
+                    # Join all group_sub strings for the current row and update dm_merged
+                    group_sub = ','.join(str(s) for s in group_sub_list)
                 
                 sensitivity_score = 0
                 sensitivity = 'Equivocal'
@@ -528,11 +586,17 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
                     sensitivity_score = 1
                     sensitivity = 'Resistant'
 
+
+                # name, ref_pooled_s_prime, ref_median_s_prime, ref_mad, ref_pooled_auc, ref_pooled_ec50, num_ref_lines, 
+                # ref_s_prime_variance, test_pooled_s_prime, test_median_s_prime, test_mad, test_pooled_auc, test_pooled_ec50, 
+                # num_test_lines, test_s_prime_variance, delta_s_prime, delta_auc, delta_ec50, 
+                # delta_s_prime_median, p_val_median_man_whit, sensitivity_score, sensitivity, moa, 
+                # target, group_sub, gene_id, tissue
                 pooled_delta_s_prime_dict[key] = (key, ref_pooled_s_prime, ref_median_s_prime, ref_mad, ref_pooled_auc, ref_pooled_ec50, 
                 num_ref_lines, ref_s_prime_variance, test_pooled_s_prime, test_median_s_prime, test_mad, test_pooled_auc, test_pooled_ec50, 
                 num_test_lines, test_s_prime_variance, delta_s_prime, delta_auc, delta_ec50, 
                 delta_s_prime_median, p_val_median_man_whit, sensitivity_score, sensitivity, moa, 
-                target, group_sub, gene_id, tissue)  
+                target, group_sub, gene_id, tissue)   
 
         logger.info(f"pooled_delta_s_prime_dict length = {len(pooled_delta_s_prime_dict)}")
         insert_rows = list(pooled_delta_s_prime_dict.values())
@@ -549,6 +613,7 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
         end_time_main = datetime.now()
         logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
 
+
 def median_absolute_deviation(data):
         # Calculate the median of the data
         median = np.median(data)
@@ -557,3 +622,7 @@ def median_absolute_deviation(data):
         # Compute the median of the absolute deviations
         mad = np.median(abs_deviation)
         return mad
+
+def fetch_df(file, **kwargs):
+    data_path = Path(file)
+    return pd.read_csv(data_path, **kwargs)

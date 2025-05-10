@@ -32,9 +32,9 @@ start = DummyOperator(
 logger = logging.getLogger(__name__)  # This logger will be used across all functions
 
 def refreshData():
-    #refresh_data_methods.refresh_secondary_dose_curve()
+    refresh_data_methods.refresh_secondary_dose_curve()
     refresh_data_methods.refresh_s_prime()
-    #refresh_damaging_mutations()
+    refresh_data_methods.refresh_damaging_mutations()
     # 7300 = NF1 (4763)
     #refresh_mutations_by_cell_line([7300])
     #refresh_pooled_delta_s_results(7300, "LUNG")
