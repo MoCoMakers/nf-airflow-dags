@@ -301,6 +301,17 @@ def refresh_damaging_mutations():
         end_time_main = datetime.now()
         logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
 
+# XXXXX
+def refresh_mutations_by_cell_line():
+    # id, name
+    omic_gene_rows = fetch_data_from_db(im_omics_gene_select_sql)
+    # key=name, value=id
+    omic_gene_dic = {x: y for x, y in omic_gene_rows}
+    gene_ids = omic_gene_dic.keys()
+
+    for gene_ids_batch in utils.batch(gene_ids, 10): 
+        refresh_mutations_by_cell_line(gene_ids_batch)
+
 
 #Task_4: Create a merged table that brings in Mutation Value by cell line (ACH-….)
 #Table name -> im_sprime_s_prime_with_mutations
@@ -331,6 +342,9 @@ def refresh_mutations_by_cell_line(gene_id_list):
         pg_conn.commit()
         logger.info(f"DB table {table_name} has been created.")
 
+        logger.info(f"{table_name} will be refreshed for {len(gene_id_list)} genes.")
+
+        logger.info(f"Target gene ids: {gene_id_list}")
 
         # 3) Fetch s_prime_rows
         # (id, depmap_id, ccle_name)
@@ -350,10 +364,9 @@ def refresh_mutations_by_cell_line(gene_id_list):
 
         cell_lines = list(set([x[1] for x in s_prime_rows]))
 
-        logger.info(f"Total number of unique cell lines in solved_s_prime table: {len(cell_lines)}")
-        logger.info(f"Total number of unique tissues: {len(tissue_names)}")
+        #logger.info(f"Total number of unique cell lines: {len(cell_lines)}")
+        #logger.info(f"Total number of unique tissues: {len(tissue_names)}")
 
-    
         for cell_line_batch in utils.batch(cell_lines, 5): 
             # 4) Fetch mutation values for all cell lines
             # row = (cell_line, gene_id, mutation_value)
@@ -378,8 +391,8 @@ def refresh_mutations_by_cell_line(gene_id_list):
             for row in s_prime_rows:
                 insert_rows = []
                 # [(gene_id, mutation_value)..]
-                res = row[2].split('_', 1)
-                tissue = res[1] if len(res) > 1 else ""
+                #res = row[2].split('_', 1)
+                #tissue = res[1] if len(res) > 1 else ""
                 if row[1] in cell_line_batch:
                     mutation_values = cell_line_mutations_dict[row[1]]
                     for mut_val in mutation_values:
@@ -388,7 +401,6 @@ def refresh_mutations_by_cell_line(gene_id_list):
                             s_prime_with_mutations_rows.extend(insert_rows)
 
             logger.info(f"Target cell lines: {cell_line_batch}")
-            logger.info(f"Target gene ids: {gene_id_list}")
             cursor.executemany(data_insert_sql, s_prime_with_mutations_rows)
             pg_conn.commit()
             logger.info(f"Total number of rows inserted to {table_name} table: {len(s_prime_with_mutations_rows)}")
