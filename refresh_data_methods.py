@@ -301,16 +301,7 @@ def refresh_damaging_mutations():
         end_time_main = datetime.now()
         logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
 
-# XXXXX
-def refresh_mutations_by_cell_line():
-    # id, name
-    omic_gene_rows = fetch_data_from_db(im_omics_gene_select_sql)
-    # key=name, value=id
-    omic_gene_dic = {x: y for x, y in omic_gene_rows}
-    gene_ids = omic_gene_dic.keys()
 
-    for gene_ids_batch in utils.batch(gene_ids, 10): 
-        refresh_mutations_by_cell_line(gene_ids_batch)
 
 
 #Task_4: Create a merged table that brings in Mutation Value by cell line (ACH-….)
@@ -412,6 +403,18 @@ def refresh_mutations_by_cell_line(gene_id_list):
         cursor.close()
         end_time_main = datetime.now()
         logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
+
+
+def refresh_mutations():
+    # id, name
+    omic_gene_rows = fetch_data_from_db(im_omics_gene_select_sql)
+    # key=name, value=id
+    omic_gene_dic = {x: y for x, y in omic_gene_rows}
+    gene_ids = omic_gene_dic.keys()
+
+    for gene_ids_batch in utils.batch(gene_ids, 10): 
+        refresh_mutations_by_cell_line(gene_ids_batch)
+
 
 # Task_5: Create the Pooled delta S' results table from 4 by applying these filters:
 # 	- LUNG
