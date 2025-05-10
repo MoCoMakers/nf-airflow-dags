@@ -463,7 +463,7 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
         s_prime_name_vals_dict = {}
         for name_tissue_row_batch in utils.batch(names_for_tissue, 100):
             s_prime_names = [row[0] for row in name_tissue_row_batch]
-            formatted_s_prime_names = ', '.join(f"'{w.replace("'", "''")}'" for w in s_prime_names)
+            formatted_s_prime_names = ', '.join(f"""'{w.replace("'", "''")}'""" for w in s_prime_names)
             try:
                 cursor.execute(source_data_for_fnl_sprime_table.format(formatted_s_prime_names), (gene_id, tissue, "%_"+tissue))
                 results = cursor.fetchall()
