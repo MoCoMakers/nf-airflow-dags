@@ -6,16 +6,14 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import sys
 import os
+import logging  # Import logging
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import utils  # Now this should work
 
 _config = utils.get_config_data_refresh()
 
-#test_name = _config['sql']['query_1']
-
 pg_hook = PostgresHook(postgres_conn_id='Comp_Bio_Hub_Postgres', schema='public')
-
 
 # Define the default_args dictionary
 default_args = {
@@ -37,8 +35,22 @@ start = DummyOperator(
     dag=dag,
 )
 
-def refreshData():
-    print("CONFIG CONTENT:", _config)
+# Define the logger at the module level
+logger = logging.getLogger(__name__)  # This logger will be used across all functions
+
+def refreshData(**kwargs):
+    # Log initial message when the function starts
+    logger.info("Started the data refresh process.")
+
+    # Call other methods
+    method1()
+    method2()
+
+def method1():
+    logger.info("Method 1 is being executed.")
+
+def method2():
+    logger.info("Method 2 is being executed.")
 
 refresh_data_task = PythonOperator(
     task_id='refresh_data_task',

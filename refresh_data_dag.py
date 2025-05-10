@@ -2,6 +2,7 @@ from airflow import DAG
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.python_operator import PythonOperator
 from airflow.hooks.postgres_hook import PostgresHook
+from airflow.utils.log.logging_mixin import LoggingMixin
 import traceback
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -11,9 +12,10 @@ import numpy as np
 from scipy.stats import mannwhitneyu
 import sys
 import os
+import logging
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+import utils
 
-import utils  # Now this should work
 
 _config = utils.get_config_data_refresh()
 
@@ -73,6 +75,23 @@ dag = DAG(
     schedule_interval='@once',
 )
 
+# Create the tasks
+start = DummyOperator(
+    task_id='start',
+    dag=dag,
+)
+
+# Define the logger at the module level
+logger = logging.getLogger(__name__)  # This logger will be used across all functions
+
+def refreshData():
+    refresh_secondary_dose_curve()
+    #refresh_s_prime()
+    #refresh_damaging_mutations()
+    # 7300 = NF1 (4763)
+    #refresh_mutations_by_cell_line([7300])
+    #refresh_pooled_delta_s_results(7300, "LUNG")
+
 def fetch_data_from_db(select_sql):
     pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
@@ -122,13 +141,7 @@ def refresh_omic_genes():
         pg_conn.commit()
         cursor.close()
 
-def refreshData():
-    refresh_secondary_dose_curve()
-    refresh_s_prime()
-    refresh_damaging_mutations()
-    # 7300 = NF1 (4763)
-    refresh_mutations_by_cell_line([7300])
-    refresh_pooled_delta_s_results(7300, "LUNG")
+
 
 
 # TASK_1:
@@ -149,13 +162,13 @@ def refresh_secondary_dose_curve():
     cursor = pg_conn.cursor()
 
     try:
-        print(f"Data refresh process started for {table_name}.")
+        logger.info(f"Data refresh process started for {table_name}.")
         cursor.execute(drop_table_sql)
         pg_conn.commit()
 
         cursor.execute(table_create_sql)
         pg_conn.commit()
-        print(f"DB table {table_name} has been created.")
+        logger.info(f"DB table {table_name} has been created.")
         
         chunksize = 20000
         total = 0
@@ -167,20 +180,20 @@ def refresh_secondary_dose_curve():
             cursor.executemany(data_insert_sql, rows)
             pg_conn.commit()
             end_time_insert = datetime.now()
-            print(f"Duration to insert {len(chunk)} records: {(end_time_insert - start_time_insert).seconds} seconds")
+            logger.info(f"Duration to insert {len(chunk)} records: {(end_time_insert - start_time_insert).seconds} seconds")
             total = total + len(chunk.values)
             time.sleep(3)
-        print(f"Total number of records inserted to {table_name} table = {total}") 
+        logger.info(f"Total number of records inserted to {table_name} table = {total}") 
         
     except Exception as e:
-        print(f"Error happened while refreshing {table_name} table.")
+        logger.info(f"Error happened while refreshing {table_name} table.")
         traceback.print_exc()
         pg_conn.rollback()    
     finally:
         pg_conn.commit()
         cursor.close()
         end_time_main = datetime.now()
-        print(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
+        logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
 
 # TASK_2:
 #Load OmicsSomaticMutationsMatrixDamaging.csv from ~/nf_streamlit/app/data
@@ -575,18 +588,11 @@ def median_absolute_deviation(data):
         mad = np.median(abs_deviation)
         return mad
 
-# Create the tasks
-start = DummyOperator(
-    task_id='start',
-    dag=dag,
-)
-
 refresh_data_task = PythonOperator(
     task_id='refresh_data_task',
     python_callable=refreshData,
     dag=dag,
-    execution_timeout=timedelta(seconds=900000),
-)
+    execution_timeout=timedelta(seconds=900000))
 
 end = DummyOperator(
     task_id='end',

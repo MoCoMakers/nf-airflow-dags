@@ -76,7 +76,7 @@ def ensure_path_exists(path):
 def batch(iterable, n):
     l = len(iterable)
     for ndx in range(0, l, n):
-        yield iterable[ndx:min(ndx + n, l)] 
+        yield iterable[ndx:min(ndx + n, l)]
 
 def update_execution_status_logs(file_path, message):
      with open(file_path, 'a+', encoding="utf-8") as f:
