@@ -6,15 +6,14 @@ import pandas as pd
 import time
 import numpy as np
 from scipy.stats import mannwhitneyu
-import utils  # Now this should work
+import utils 
 
 _config = utils.get_config_data_refresh()
 
-
-postgres_host = _config['db']['host']
-postgres_name = _config['db']['name']
-postgres_user = _config['db']['username']
-postgres_password = _config['db']['password']
+postgres_host = _config['db']['postgres_host']
+postgres_name = _config['db']['postgres_name']
+postgres_user = _config['db']['postgres_user']
+postgres_password = _config['db']['postgres_password']
 
 pg_conn = psycopg2.connect(
         host=postgres_host,
@@ -23,111 +22,44 @@ pg_conn = psycopg2.connect(
         password=postgres_password
 )
 
-secondary_dose_curve_raw_table_sql = """CREATE TABLE IF NOT EXISTS im_dep_raw_secondary_dose_curve 
-(broad_id VARCHAR(255), depmap_id VARCHAR(255), ccle_name VARCHAR(1000), screen_id VARCHAR(50),
-upper_limit INTEGER, lower_limit FLOAT, slope FLOAT,
-r2 FLOAT, auc FLOAT, ec50 FLOAT, ic50 FLOAT,
-name VARCHAR(255), moa VARCHAR(1000), target VARCHAR(1000),
-disease_area VARCHAR(1000), indication VARCHAR(1000),
-smiles VARCHAR(1500), phase VARCHAR(255), passed_str_profiling boolean, row_name VARCHAR(255))"""
+secondary_dose_curve_raw_table_sql = _config['sql']['secondary_dose_curve_raw_table_sql']
 
-secondary_dose_curve_raw_insert_sql = """INSERT INTO im_dep_raw_secondary_dose_curve 
-(broad_id, depmap_id, ccle_name, screen_id, upper_limit, lower_limit, 
-slope, r2, auc, ec50, ic50, name, moa, target, disease_area, indication,
-smiles, phase, passed_str_profiling, row_name) 
-VALUES (%s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+secondary_dose_curve_raw_insert_sql = _config['sql']['secondary_dose_curve_raw_insert_sql']
 
-secondary_dose_curve_raw_select = "select * from im_dep_raw_secondary_dose_curve where screen_id='HTSwithMTS010_Overlayed' and passed_str_profiling=true"
+secondary_dose_curve_raw_select = _config['sql']['secondary_dose_curve_raw_select']
 
-im_sprime_solved_s_prime_table_sql = """CREATE TABLE IF NOT EXISTS im_sprime_solved_s_prime 
-(id integer primary key generated always as identity, broad_id VARCHAR(255), depmap_id VARCHAR(255), ccle_name VARCHAR(1000), screen_id VARCHAR(50),
-upper_limit INTEGER, lower_limit FLOAT, slope FLOAT,
-r2 FLOAT, auc FLOAT, ec50 FLOAT, ic50 FLOAT,
-name VARCHAR(255), moa VARCHAR(1000), target VARCHAR(1000),
-disease_area VARCHAR(1000), indication VARCHAR(1000),
-smiles VARCHAR(1500), phase VARCHAR(255), passed_str_profiling boolean, row_name VARCHAR(255), eff FLOAT, eff_100 FLOAT, eff_ec50 FLOAT, s_prime FLOAT)"""
+im_sprime_solved_s_prime_table_sql = _config['sql']['im_sprime_solved_s_prime_table_sql']
 
-im_sprime_solved_s_prime_insert_sql = """INSERT INTO im_sprime_solved_s_prime 
-(broad_id, depmap_id, ccle_name, screen_id, upper_limit, lower_limit, 
-slope, r2, auc, ec50, ic50, name, moa, target, disease_area, indication,
-smiles, phase, passed_str_profiling, row_name, eff, eff_100, eff_ec50, s_prime) 
-VALUES (%s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+im_sprime_solved_s_prime_insert_sql = _config['sql']['im_sprime_solved_s_prime_insert_sql']
 
-im_sprime_solved_s_prime_select_sql = "select id, depmap_id, ccle_name from im_sprime_solved_s_prime"
+im_sprime_solved_s_prime_select_sql = _config['sql']['im_sprime_solved_s_prime_select_sql']
 
-im_dep_sprime_damaging_mutations_table_sql = """CREATE TABLE IF NOT EXISTS im_dep_sprime_damaging_mutations (cell_line VARCHAR(255), gene_id INTEGER, mutation_value INTEGER)"""
-im_dep_sprime_damaging_mutations_insert_sql = "INSERT INTO im_dep_sprime_damaging_mutations (cell_line, gene_id, mutation_value) values (%s, %s,%s)"
+im_dep_sprime_damaging_mutations_table_sql = _config['sql']['im_dep_sprime_damaging_mutations_table_sql']
+im_dep_sprime_damaging_mutations_insert_sql = _config['sql']['im_dep_sprime_damaging_mutations_insert_sql']
 
-im_omics_gene_table_sql = """CREATE TABLE IF NOT EXISTS im_omics_genes (id integer primary key generated always as identity, name VARCHAR(100))"""
-im_omics_gene_insert_sql = "INSERT INTO im_omics_genes (name) values (%s)"
-im_omics_gene_select_sql = "select * from im_omics_genes"
+im_omics_gene_table_sql = _config['sql']['im_omics_gene_table_sql']
+im_omics_gene_insert_sql = _config['sql']['im_omics_gene_insert_sql']
+im_omics_gene_select_sql = _config['sql']['im_omics_gene_select_sql']
 
-mutation_values_for_cell_lines = "select * from im_dep_sprime_damaging_mutations where cell_line in ({}) and mutation_value in (0, 2)"
+mutation_values_for_cell_lines = _config['sql']['mutation_values_for_cell_lines']
 
-mutation_values_all = "select * from im_dep_sprime_damaging_mutations"
-im_sprime_s_prime_with_mutations_table_sql = """CREATE TABLE IF NOT EXISTS im_sprime_s_prime_with_mutations (s_prime_id INTEGER, cell_line VARCHAR(255), tissue VARCHAR(255), gene_id INTEGER, mutation_value INTEGER)"""
-im_sprime_s_prime_with_mutations_insert_sql = "INSERT INTO im_sprime_s_prime_with_mutations (s_prime_id, cell_line, tissue, gene_id, mutation_value) values (%s,%s,%s,%s,%s)"
+mutation_values_all = _config['sql']['mutation_values_all']
+im_sprime_s_prime_with_mutations_table_sql = _config['sql']['im_sprime_s_prime_with_mutations_table_sql']
+im_sprime_s_prime_with_mutations_insert_sql = _config['sql']['im_sprime_s_prime_with_mutations_insert_sql']
 
+fnl_sprime_pooled_delta_sprime_table_sql = _config['sql']['fnl_sprime_pooled_delta_sprime_table_sql']
 
-# 1) name	
-# 2) ref_pooled_s_prime	
-# 3) ref_median_s_prime	
-# 4) ref_mad	
-# 5) ref_pooled_auc	
-# 6) ref_pooled_ec50	
-# 7) num_ref_lines	
-# 8) ref_s_prime_variance	
-# 9) test_pooled_s_prime	
-# 10) test_median_s_prime	
-# 11) test_mad	
-# 12) test_pooled_auc	
-# 13) test_pooled_ec50	
-# 14) num_test_lines	
-# 15) test_s_prime_variance	
-# 16) delta_s_prime	
-# 17) delta_auc	
-# 18) delta_ec50	
-# 19) delta_s_prime_median	
-# 20) p_val_median_man_whit	
-# 21) Sensitivity Score	
-# 22) Sensitivity	
-# 23) moa	
-# 24) target	
-# 25) group_sub
-fnl_sprime_pooled_delta_sprime_table_sql = """CREATE TABLE IF NOT EXISTS fnl_sprime_pooled_delta_sprime 
-(name VARCHAR(255), 
-ref_pooled_s_prime FLOAT, 
-ref_median_s_prime FLOAT, 
-ref_mad FLOAT, 
-ref_pooled_auc FLOAT, 
-ref_pooled_ec50 FLOAT, num_ref_lines INTEGER, ref_s_prime_variance FLOAT, test_pooled_s_prime FLOAT, test_median_s_prime FLOAT,
-test_mad FLOAT, test_pooled_auc FLOAT, test_pooled_ec50 FLOAT, 
-num_test_lines INTEGER, test_s_prime_variance FLOAT, delta_s_prime FLOAT, delta_auc FLOAT, delta_ec50 FLOAT, 
-delta_s_prime_median FLOAT, p_val_median_man_whit FLOAT, sensitivity_score INTEGER, sensitivity VARCHAR(50), moa VARCHAR(1000), 
-target VARCHAR(1000), group_sub VARCHAR(1000),
-gene_id INTEGER, tissue VARCHAR(255))"""
+fnl_sprime_pooled_delta_sprime_insert_sql = _config['sql']['fnl_sprime_pooled_delta_sprime_insert_sql']
 
-fnl_sprime_pooled_delta_sprime_insert_sql = """INSERT INTO fnl_sprime_pooled_delta_sprime (
-name, ref_pooled_s_prime, ref_median_s_prime, ref_mad, ref_pooled_auc, ref_pooled_ec50, num_ref_lines, 
-ref_s_prime_variance, test_pooled_s_prime, test_median_s_prime, test_mad, test_pooled_auc, test_pooled_ec50, 
-num_test_lines, test_s_prime_variance, delta_s_prime, delta_auc, delta_ec50, 
-delta_s_prime_median, p_val_median_man_whit, sensitivity_score, sensitivity, moa, 
-target, group_sub, gene_id, tissue) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+source_data_for_fnl_sprime_table = _config['sql']['source_data_for_fnl_sprime_table']
 
+names_for_tissue_select = _config['sql']['names_for_tissue_select']
 
-source_data_for_fnl_sprime_table = """select distinct s_prime.name, mut.cell_line, s_prime.s_prime, s_prime.ec50, s_prime.auc, s_prime.moa, s_prime.target, mut.mutation_value 
-from im_sprime_s_prime_with_mutations mut 
-left join im_sprime_solved_s_prime s_prime on s_prime.row_name=mut.cell_line
-where mut.gene_id=%s and mut.tissue=%s and mut.mutation_value in (0, 2)
-and s_prime.ccle_name like %s and s_prime.name in ({})"""
+DEP_PRISM_PATH = _config['files_path']['dep_prism_path']
+DEP_PUBLIC_PATH = _config['files_path']['dep_public_path']
 
-names_for_tissue_select = """select distinct name from im_sprime_solved_s_prime where ccle_name like %s"""
-
-DEP_PRISM_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Prism19Q4"
-DEP_PUBLIC_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Public24Q2"
-
-SEC_RESP_DOSE_CURVE = "secondary-screen-dose-response-curve-parameters.csv"
-OMICS_MUTATIONS_MATRIX = "OmicsSomaticMutationsMatrixDamaging.csv"
+SEC_RESP_DOSE_CURVE = _config['files_path']['sec_resp_dose_curve']
+OMICS_MUTATIONS_MATRIX = _config['files_path']['omics_mutations_matrix']
 
 
 def fetch_data_from_db(select_sql):
@@ -138,11 +70,6 @@ def fetch_data_from_db(select_sql):
     #     print(pickle.loads(r[1]))
     #print(f"Total number of rows fetched: {len(rows)}")
     return rows
-
-def batch(iterable, n):
-    l = len(iterable)
-    for ndx in range(0, l, n):
-        yield iterable[ndx:min(ndx + n, l)] 
 
 
 def refresh_omic_genes():
@@ -300,7 +227,7 @@ def solve_S_Prime():
         secondary_raw_data = fetch_data_from_db(secondary_dose_curve_raw_select)
         
         total_rows = 0
-        for rows_batch in batch(secondary_raw_data, 10000):
+        for rows_batch in utils.batch(secondary_raw_data, 10000):
             insert_rows = []
             for row in rows_batch:
 
@@ -413,7 +340,7 @@ def refresh_mutations_by_cell_line(gene_id_list):
     print(f"Total number of unique tissues: {len(tissue_names)}")
 
    
-    for cell_line_batch in batch(cell_lines, 5): 
+    for cell_line_batch in utils.batch(cell_lines, 5): 
         # 4) Fetch mutation values for all cell lines
         # row = (cell_line, gene_id, mutation_value)
         mutation_values_for_cell_lines = get_mutation_values_for_cell_lines(cell_line_batch)
@@ -512,7 +439,7 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
 
         pooled_delta_s_prime_dict = {}
         s_prime_name_vals_dict = {}
-        for name_tissue_row_batch in batch(names_for_tissue, 100):
+        for name_tissue_row_batch in utils.batch(names_for_tissue, 100):
             s_prime_names = [row[0] for row in name_tissue_row_batch]
             formatted_s_prime_names = ', '.join(f"'{w.replace("'", "''")}'" for w in s_prime_names)
             try:
@@ -663,7 +590,7 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
 
         print(f"pooled_delta_s_prime_dict length = {len(pooled_delta_s_prime_dict)}")
         insert_rows = list(pooled_delta_s_prime_dict.values())
-        for rows_batch in batch(insert_rows, 250):
+        for rows_batch in utils.batch(insert_rows, 250):
             cursor.executemany(data_insert_sql, rows_batch)
             pg_conn.commit()
         print(f"Total number of rows inserted to {table_name} table: {len(pooled_delta_s_prime_dict)}")
@@ -773,14 +700,17 @@ def confirm_pooled_delta_s_prime_with_mutation_tissue_data(test_name):
     print(f"test_pooled_s_prime  = {np.mean(name_row_name_test_dict[test_name][1])}")
 
 
-#solve_S_Prime()
+# Task_1
+refresh_secondary_dose_curve()
+
+# Task_2
 #refresh_damaging_mutations()
-#refresh_omic_genes()
-#get_mutation_values_for_cell_lines(['ACH-000047'])
 
-#analyze_mutation_tissue()
-#confirm_pooled_delta_s_prime_with_mutation_tissue_data("1-azakenpaullone")
+# Task_3
+#solve_S_Prime()
 
-#refresh_mutations_by_cell_line([7300]) 
+# Task_4
+#refresh_mutations_by_cell_line([7300])
 
-refresh_pooled_delta_s_results(7300, "LUNG")
+# Task_5
+#refresh_pooled_delta_s_results(7300, "LUNG")

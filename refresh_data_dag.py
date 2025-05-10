@@ -50,11 +50,11 @@ source_data_for_fnl_sprime_table = _config['sql']['source_data_for_fnl_sprime_ta
 
 names_for_tissue_select = _config['sql']['names_for_tissue_select']
 
-DEP_PRISM_PATH = _config['files_path']['DEP_PRISM_PATH']
-DEP_PUBLIC_PATH = _config['files_path']['DEP_PUBLIC_PATH']
+DEP_PRISM_PATH = _config['files_path']['dep_prism_path']
+DEP_PUBLIC_PATH = _config['files_path']['dep_public_path']
 
-SEC_RESP_DOSE_CURVE = _config['files_path']['SEC_RESP_DOSE_CURVE']
-OMICS_MUTATIONS_MATRIX = _config['files_path']['OMICS_MUTATIONS_MATRIX']
+SEC_RESP_DOSE_CURVE = _config['files_path']['sec_resp_dose_curve']
+OMICS_MUTATIONS_MATRIX = _config['files_path']['omics_mutations_matrix']
 
 pg_hook = PostgresHook(postgres_conn_id='Comp_Bio_Hub_Postgres', schema='public')
 
@@ -269,7 +269,7 @@ def refresh_s_prime():
         secondary_raw_data = fetch_data_from_db(secondary_dose_curve_raw_select)
         
         total_rows = 0
-        for rows_batch in batch(secondary_raw_data, 10000):
+        for rows_batch in utils.batch(secondary_raw_data, 10000):
             insert_rows = []
             for row in rows_batch:
 
@@ -360,7 +360,7 @@ def refresh_mutations_by_cell_line(gene_id_list):
         print(f"Total number of unique tissues: {len(tissue_names)}")
 
     
-        for cell_line_batch in batch(cell_lines, 5): 
+        for cell_line_batch in utils.batch(cell_lines, 5): 
             # 4) Fetch mutation values for all cell lines
             # row = (cell_line, gene_id, mutation_value)
             mutation_values_for_cell_lines = get_mutation_values_for_cell_lines(cell_line_batch)
@@ -440,7 +440,7 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
 
         pooled_delta_s_prime_dict = {}
         s_prime_name_vals_dict = {}
-        for name_tissue_row_batch in batch(names_for_tissue, 100):
+        for name_tissue_row_batch in utils.batch(names_for_tissue, 100):
             s_prime_names = [row[0] for row in name_tissue_row_batch]
             formatted_s_prime_names = ', '.join(f"""'{w.replace("'", "''")}'""" for w in s_prime_names)
             cursor.execute(source_data_for_fnl_sprime_table.format(formatted_s_prime_names), (gene_id, tissue, "%_"+tissue))
@@ -545,11 +545,6 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
                     sensitivity_score = 1
                     sensitivity = 'Resistant'
 
-                # name, ref_pooled_s_prime, ref_median_s_prime, ref_mad, ref_pooled_auc, ref_pooled_ec50, num_ref_lines, 
-                # ref_s_prime_variance, test_pooled_s_prime, test_median_s_prime, test_mad, test_pooled_auc, test_pooled_ec50, 
-                # num_test_lines, test_s_prime_variance, delta_s_prime, delta_auc, delta_ec50, 
-                # delta_s_prime_median, p_val_median_man_whit, sensitivity_score, sensitivity, moa, 
-                # target, group_sub, gene_id, tissue
                 pooled_delta_s_prime_dict[key] = (key, ref_pooled_s_prime, ref_median_s_prime, ref_mad, ref_pooled_auc, ref_pooled_ec50, 
                 num_ref_lines, ref_s_prime_variance, test_pooled_s_prime, test_median_s_prime, test_mad, test_pooled_auc, test_pooled_ec50, 
                 num_test_lines, test_s_prime_variance, delta_s_prime, delta_auc, delta_ec50, 
@@ -558,7 +553,7 @@ def refresh_pooled_delta_s_results(gene_id, tissue):
 
         print(f"pooled_delta_s_prime_dict length = {len(pooled_delta_s_prime_dict)}")
         insert_rows = list(pooled_delta_s_prime_dict.values())
-        for rows_batch in batch(insert_rows, 250):
+        for rows_batch in utils.batch(insert_rows, 250):
             cursor.executemany(data_insert_sql, rows_batch)
             pg_conn.commit()
         print(f"Total number of rows inserted to {table_name} table: {len(pooled_delta_s_prime_dict)}")
@@ -579,11 +574,6 @@ def median_absolute_deviation(data):
         # Compute the median of the absolute deviations
         mad = np.median(abs_deviation)
         return mad
-
-def batch(iterable, n):
-    l = len(iterable)
-    for ndx in range(0, l, n):
-        yield iterable[ndx:min(ndx + n, l)] 
 
 # Create the tasks
 start = DummyOperator(
