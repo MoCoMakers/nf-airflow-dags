@@ -2,8 +2,18 @@ import psycopg2
 from pathlib import Path
 import pandas as pd
 import numpy as np
+import utils
+import logging
+from datetime import datetime, timedelta
+import traceback
+import io
+
+logger = logging.getLogger(__name__)  # This logger will be used across all functions
+
+_config = utils.get_config_data_refresh()
 
 
+im_sprime_s_prime_with_mutations_insert_sql = _config['sql']['im_sprime_s_prime_with_mutations_insert_sql']
 
 # name, ref_pooled_s_prime, num_ref_lines, test_pooled_s_prime, num_test_lines, delta_s_prime
 fnl_sprime_pooled_delta_sprime_select = """select name, ref_pooled_s_prime, num_ref_lines, test_pooled_s_prime, num_test_lines, delta_s_prime, tissue from fnl_sprime_pooled_delta_sprime where gene_id = %s and tissue = %s"""
@@ -15,6 +25,15 @@ from im_sprime_s_prime_with_mutations mut left join im_sprime_solved_s_prime s_p
 on s_prime.id=mut.s_prime_id
 where mut.gene_id=%s and mut.tissue=%s"""
 
+
+solved_s_prime_count_for_gene_and_tissue_select = """select mut.* from im_dep_sprime_damaging_mutations mut left join im_sprime_solved_s_prime solved_prime
+on solved_prime.depmap_id=mut.cell_line where mut.mutation_value in (0,2)
+and solved_prime.ccle_name like '%LUNG'
+"""
+
+im_omics_gene_select_sql = _config['sql']['im_omics_gene_select_sql']
+
+
 DEP_PRISM_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Prism19Q4"
 DEP_PUBLIC_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Public24Q2"
 
@@ -22,6 +41,7 @@ postgres_host = "XXXX"
 postgres_name = "XXXX"
 postgres_user = "XXXX"
 postgres_password = "XXXX"
+
 
 pg_conn = psycopg2.connect(
         host=postgres_host,
@@ -48,6 +68,28 @@ def fetch_data_from_db(select_sql, params):
     #     print(pickle.loads(r[1]))
     #print(f"Total number of rows fetched: {len(rows)}")
     return rows
+
+
+def get_mutation_counts_for_gene_and_tissues():
+    start_time = datetime.now()
+    cursor = pg_conn.cursor()
+    try:
+        print("Task started")
+        omic_gene_rows = fetch_data_from_db(im_omics_gene_select_sql, None)
+        omic_gene_dic = {x: y for x, y in omic_gene_rows}
+        gene_ids = list(omic_gene_dic.keys())
+
+        print(f"Gene ids length = {len(gene_ids)}")
+        cursor.execute(solved_s_prime_count_for_gene_and_tissue_select)
+        results = cursor.fetchall
+        print(f"Total number of records: {len(results)}")
+    except Exception as e:
+        traceback.print_exc() 
+    finally:
+        cursor.close()
+        end_time = datetime.now()
+        print(f"Duration to fetch records: {(end_time - start_time).seconds} seconds")
+
 
 # Steps to compare CSV data with im_sprime_s_prime_with_mutations table data:
 # 1) Download "All S' by Mutation and Tissue” data from web tool
@@ -191,5 +233,10 @@ def qa_verify_fnl_sprime_pooled_delta_sprime(data_file_name, gene_id, tissue_nam
 
     return df
 
+
 #qa_verify_fnl_sprime_pooled_delta_sprime("pooled_delta_s_prime.csv", 7300, "LUNG")
 #qa_verify_im_sprime_s_prime_with_mutations_table("s_prime_mutation_tissue.csv",  7300, "LUNG")
+
+#get_mutation_counts_for_gene_and_tissues()
+
+#refresh_big_data("LUNG", 1000, 10)

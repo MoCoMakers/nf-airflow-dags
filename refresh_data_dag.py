@@ -35,7 +35,7 @@ def refreshData():
     #refresh_data_methods.refresh_secondary_dose_curve()
     #refresh_data_methods.refresh_s_prime()
     #refresh_data_methods.refresh_damaging_mutations()
-    refresh_data_methods.refresh_mutations()
+    refresh_data_methods.refresh_mutations("PANCREAS", "INCREMENTAL")
     #refresh_pooled_delta_s_results(7300, "LUNG")
 
 

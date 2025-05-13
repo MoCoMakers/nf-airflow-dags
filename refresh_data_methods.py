@@ -15,6 +15,7 @@ import os
 import logging
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import utils
+import io
 
 _config = utils.get_config_data_refresh()
 
@@ -50,6 +51,8 @@ fnl_sprime_pooled_delta_sprime_insert_sql = _config['sql']['fnl_sprime_pooled_de
 source_data_for_fnl_sprime_table = _config['sql']['source_data_for_fnl_sprime_table']
 
 names_for_tissue_select = _config['sql']['names_for_tissue_select']
+
+refresh_mutations_source_data_select = _config['sql']['refresh_mutations_source_data_select']
 
 DEP_PRISM_PATH = _config['files_path']['dep_prism_path']
 DEP_PUBLIC_PATH = _config['files_path']['dep_public_path']
@@ -305,123 +308,75 @@ def refresh_damaging_mutations():
 # This foreign key will give us the pre-calculated values. So we don’t need to explicitly save s’ calculations in this table. 
 # We will fetch the full data by joining “im_sprime_s_prime_with_mutations” table with “im_sprime_solved_s_prime”. 
 # If this join causes slowness in data retrieval then we will calculate and save all values in this table explicitly.
-def refresh_mutations_by_cell_line(gene_id_list):
-    start_time_main = datetime.now()
-    table_name = "im_sprime_s_prime_with_mutations"
-    data_insert_sql = im_sprime_s_prime_with_mutations_insert_sql
+def refresh_mutations(tissue, load_type):
+    start_time = datetime.now()
 
-    pg_conn = pg_hook.get_conn()
-    cursor = pg_conn.cursor()
-
-    try:
-        # 1) Fetch s_prime_rows
-        # (id, depmap_id, ccle_name)
-        cursor.execute(im_sprime_solved_s_prime_select_sql)
-        s_prime_rows = cursor.fetchall()
-
-        tissue_names = []
-
-        s_prime_tissue_dict = {}
-        for s_prime_row in s_prime_rows:
-            res = s_prime_row[2].split("_", 1)
-            tissue_name = res[1] if len(res) > 1 else ""
-            tissue_names.append(tissue_name)
-            s_prime_tissue_dict[s_prime_row[0]] = tissue_name
-
-        tissue_names = list(set(tissue_names))
-
-        cell_lines = list(set([x[1] for x in s_prime_rows]))
-
-        #logger.info(f"Total number of unique cell lines: {len(cell_lines)}")
-        #logger.info(f"Total number of unique tissues: {len(tissue_names)}")
-
-    
-        for cell_line_batch in utils.batch(cell_lines, 5): 
-            # 4) Fetch mutation values for all cell lines
-            # row = (cell_line, gene_id, mutation_value)
-            mutation_values_for_cell_lines = get_mutation_values_for_cell_lines(cell_line_batch)
-            #logger.info(f"Total # of cell line mutation values for {cell_line_batch}: {len(mutation_values_for_cell_lines)}")
-            cell_line_mutations_dict = {}
-            for cell_line, gene_id, mutation_value in mutation_values_for_cell_lines:
-                if cell_line in cell_line_mutations_dict.keys():
-                    gene_mutation_values = cell_line_mutations_dict[cell_line]
-                    gene_mutation_values.append((gene_id, mutation_value))
-                    cell_line_mutations_dict[cell_line] = gene_mutation_values
-                else:
-                    cell_line_mutations_dict[cell_line] = [(gene_id, mutation_value)]
-
-            #logger.info(f"cell_line_mutations_dict length: {len(cell_line_mutations_dict)}")
-
-            # 5) Prepare insert rows for im_sprime_s_prime_with_mutations table
-            # row = (s_prime_id, cell_line, tissue_name, gene_id, mutation_value)
-            s_prime_with_mutations_rows = []
-
-            # (id, depmap_id, ccle_name)
-            for row in s_prime_rows:
-                insert_rows = []
-                # [(gene_id, mutation_value)..]
-                res = row[2].split('_', 1)
-                tissue = res[1] if len(res) > 1 else ""
-                if row[1] in cell_line_batch:
-                    mutation_values = cell_line_mutations_dict[row[1]]
-                    for mut_val in mutation_values:
-                        if mut_val[0] in gene_id_list:
-                            insert_rows = [tuple([row[0], row[1], s_prime_tissue_dict[row[0]]]+list(mut_val))]
-                            s_prime_with_mutations_rows.extend(insert_rows)
-
-            #logger.info(f"Target cell lines: {cell_line_batch}")
-            
-            for data_rows in utils.batch(s_prime_with_mutations_rows, 1000):
-                cursor.executemany(data_insert_sql, data_rows)
-                pg_conn.commit()
-            logger.info(f"Total number of rows inserted to {table_name} table: {len(s_prime_with_mutations_rows)}")
-    except Exception as e:
-        traceback.print_exc() 
-        pg_conn.rollback()
-    finally:
-        pg_conn.commit()
-        cursor.close()
-        end_time_main = datetime.now()
-        logger.info(f"Duration to process gene id list - {gene_id_list}: {(end_time_main - start_time_main).seconds} seconds")
-
-def refresh_mutations():
-    start_time_main = datetime.now()
     table_name = "im_sprime_s_prime_with_mutations"
     table_create_sql = im_sprime_s_prime_with_mutations_table_sql
     drop_table_sql = f"drop table if exists {table_name}"
 
-    pg_conn = pg_hook.get_conn()
-    cursor = pg_conn.cursor()
+    gene_id_start = 1
+    gene_id_max = 18916
+    increment = 30
+
+    logger.info(f"Mutation data refresh process started.")
+    logger.info(f"Tissue: {tissue}, data_load_type: {load_type}, gene_id_start: {gene_id_start}, gene_id_max: {gene_id_max}, id_increment: {increment}")
 
     try:
-        logger.info(f"Data refresh process started for {table_name}.")
+        # If load type is not incremental, table will be recreated.
+        if load_type != "INCREMENTAL":
+            logger.info(f"DB table will not be recreated since data load type is {load_type}")
+            pg_conn = pg_hook.get_conn()
+            cursor = pg_conn.cursor()
 
-        # 1) Drop existing table
-        cursor.execute(drop_table_sql)
-        pg_conn.commit()
+            # 1) Drop existing table
+            cursor.execute(drop_table_sql)
+            pg_conn.commit()
 
-        # 2) Create a new table
-        cursor.execute(table_create_sql)
-        pg_conn.commit()
-        logger.info(f"DB table {table_name} has been created.")
+            # 2) Create a new table
+            cursor.execute(table_create_sql)
+            pg_conn.commit()
+            logger.info(f"DB table {table_name} has been created.")
+        # INITIAL
+        else:
+            logger.info(f"DB table will be recreated since data load type is {load_type}")
 
-        omic_gene_rows = fetch_data_from_db(im_omics_gene_select_sql)
-        omic_gene_dic = {x: y for x, y in omic_gene_rows}
-        gene_ids = list(omic_gene_dic.keys())
-
-        # 3) Insert data for each gene_id batch
-        for gene_ids_batch in utils.batch(gene_ids, 10): 
-            logger.info(f"Target gene ids: {gene_ids_batch}")
-            refresh_mutations_by_cell_line(gene_ids_batch)
+        while gene_id_start <= gene_id_max:
+            refresh_mutations_helper(tissue, gene_id_start, gene_id_start + increment)
+            gene_id_start = gene_id_start + increment + 1
     except Exception as e:
         traceback.print_exc() 
-        pg_conn.rollback()
-    finally:
-        pg_conn.commit()
-        cursor.close()
-        end_time_main = datetime.now()
-        logger.info(f"Duration to complete the refresh process for {table_name} and {len(gene_ids)} unique genes: {(end_time_main - start_time_main).seconds} seconds")
+        logger.info(f"refresh_mutations failed for gene ids range: [{gene_id_start} - {gene_id_start + increment}")
 
+    finally:
+        end_time = datetime.now()
+        logger.info(f"Duration to refresh mutation data for all gene ids between {gene_id_start} and {gene_id_max}: {(end_time - start_time).seconds} seconds")
+
+def refresh_mutations_helper(tissue, gene_id_start, gene_id_end):
+    start_time = datetime.now()
+    try:
+        logger.info(f"Started processing gene ids between {gene_id_start} and {gene_id_end}")
+        start_time_load = datetime.now()
+        df = pd.read_sql(refresh_mutations_source_data_select, pg_conn, params=(tissue, gene_id_start, gene_id_end, f"%{tissue}"))
+
+        # Create a StringIO object to write DataFrame as CSV
+        csv_buffer = io.StringIO()
+        df.to_csv(csv_buffer, index=False, header=False)
+        csv_buffer.seek(0)  # Rewind the StringIO object to the beginning
+        end_time_load = datetime.now()
+
+        # Use COPY FROM with the StringIO object
+        with pg_conn.cursor() as cursor:
+            cursor.copy_expert(
+                "COPY im_sprime_s_prime_with_mutations (s_prime_id, cell_line, tissue, gene_id, mutation_value) FROM STDIN WITH CSV",
+                csv_buffer
+            )
+            pg_conn.commit()
+    except Exception as e:
+        traceback.print_exc() 
+    finally:
+        end_time = datetime.now()
+        logger.info(f"Duration to prepare and insert data for gene ids between {gene_id_start} and {gene_id_end}: {(end_time - start_time).seconds} seconds")
 
 
 # Task_5: Create the Pooled delta S' results table from 4 by applying these filters:
@@ -648,3 +603,5 @@ def median_absolute_deviation(data):
 def fetch_df(file, **kwargs):
     data_path = Path(file)
     return pd.read_csv(data_path, **kwargs)
+
+
