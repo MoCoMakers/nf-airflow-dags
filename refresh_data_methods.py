@@ -356,14 +356,12 @@ def refresh_mutations_helper(tissue, gene_id_start, gene_id_end):
     start_time = datetime.now()
     try:
         logger.info(f"Started processing gene ids between {gene_id_start} and {gene_id_end}")
-        start_time_load = datetime.now()
         df = pd.read_sql(refresh_mutations_source_data_select, pg_conn, params=(tissue, gene_id_start, gene_id_end, f"%{tissue}"))
 
         # Create a StringIO object to write DataFrame as CSV
         csv_buffer = io.StringIO()
         df.to_csv(csv_buffer, index=False, header=False)
         csv_buffer.seek(0)  # Rewind the StringIO object to the beginning
-        end_time_load = datetime.now()
 
         # Use COPY FROM with the StringIO object
         with pg_conn.cursor() as cursor:
