@@ -326,17 +326,17 @@ def refresh_mutations(tissue, load_type):
         # If load type is not incremental, table will be recreated.
         if load_type != "INCREMENTAL":
             logger.info(f"DB table will not be recreated since data load type is {load_type}")
-            pg_conn = pg_hook.get_conn()
-            cursor = pg_conn.cursor()
+            # pg_conn = pg_hook.get_conn()
+            # cursor = pg_conn.cursor()
 
             # 1) Drop existing table
-            cursor.execute(drop_table_sql)
-            pg_conn.commit()
+            # cursor.execute(drop_table_sql)
+            # pg_conn.commit()
 
             # 2) Create a new table
-            cursor.execute(table_create_sql)
-            pg_conn.commit()
-            logger.info(f"DB table {table_name} has been created.")
+            # cursor.execute(table_create_sql)
+            # pg_conn.commit()
+            # logger.info(f"DB table {table_name} has been created.")
         # INITIAL
         else:
             logger.info(f"DB table will be recreated since data load type is {load_type}")
