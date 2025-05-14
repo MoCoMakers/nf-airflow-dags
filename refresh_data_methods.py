@@ -324,8 +324,12 @@ def refresh_mutations(tissue, load_type):
 
     try:
         # If load type is not incremental, table will be recreated.
-        if load_type != "INCREMENTAL":
+        if load_type == "INCREMENTAL":
             logger.info(f"DB table will not be recreated since data load type is {load_type}")
+            
+        # INITIAL
+        else:
+            logger.info(f"DB table will be recreated since data load type is {load_type}")
             # pg_conn = pg_hook.get_conn()
             # cursor = pg_conn.cursor()
 
@@ -337,9 +341,6 @@ def refresh_mutations(tissue, load_type):
             # cursor.execute(table_create_sql)
             # pg_conn.commit()
             # logger.info(f"DB table {table_name} has been created.")
-        # INITIAL
-        else:
-            logger.info(f"DB table will be recreated since data load type is {load_type}")
 
         while gene_id_start <= gene_id_max:
             refresh_mutations_helper(tissue, gene_id_start, gene_id_start + increment)
