@@ -253,42 +253,74 @@ def refresh_damaging_mutations():
     cursor = pg_conn.cursor()
 
     try:
-        logger.info(f"Data refresh process started for {table_name}.")
+        logger.info(f"Data refresh process started for '{table_name}'.")
         cursor.execute(drop_table_sql)
         pg_conn.commit()
         
         cursor.execute(table_create_sql)
         pg_conn.commit()
-        logger.info(f"DB table {table_name} has been created.")
+        
+        logger.info(f"Database table '{table_name}' has been created successfully.")
 
-        damaging_mutations = pd.read_csv(input_folder/data_file_name)
+        gene_rows = fetch_data_from_db(im_omics_gene_select_sql)
+        gene_name_id_dict = {name: id for id, name in gene_rows}
 
-        csv_columns = damaging_mutations.columns
-        genes = csv_columns.tolist()[1:]
+        # Step 1: Load CSV
+        logger.info(f"Step 1: Load {data_file_name} file")
+        df = pd.read_csv(input_folder/data_file_name)
 
-        omic_gene_rows = fetch_data_from_db(im_omics_gene_select_sql)
-        omic_gene_dic = {y: x for x, y in omic_gene_rows}
+        # Step 2: Rename first column to 'cell_line'
+        logger.info("Step 2: Rename first column to 'cell_line'")
+        df.rename(columns={df.columns[0]: "cell_line"}, inplace=True)
 
-        chunksize = 10
-
-        total_rows = 0
-        for chunk in pd.read_csv(input_folder/data_file_name, chunksize=chunksize, delimiter=","):
-            matrix = chunk.values
-            insert_rows = []
-            for row in matrix:
-                cell_line = row[0]
-                mutation_vals = np.delete(row,0)
-                res = [(cell_line, omic_gene_dic.get(x), y) for x, y in zip(genes, mutation_vals)]
-                insert_rows.extend(res)
+        # Step 3: Clean header names and map to gene_id
+        logger.info("Step 3: Clean header names and map to gene_id")
+        clean_column_map = {}
+        for gene_name in df.columns[1:]:  # Skip 'cell_line'
+            if gene_name in gene_name_id_dict.keys():
+                clean_column_map[gene_name] = gene_name_id_dict[gene_name]
+            else:
+                raise ValueError(f"Gene name '{gene_name}' not found in gene_name_to_id dictionary.")
             
-            #start_time = datetime.now()
-            cursor.executemany(data_insert_sql, insert_rows)
-            pg_conn.commit()
-            #end_time = datetime.now()
-            #logger.info(f"Duration to insert {len(insert_rows)} rows: {(end_time - start_time).seconds} seconds")
-            total_rows = total_rows + len(insert_rows)
-            
-        logger.info(f"Total number of rows inserted to {table_name} = {total_rows}")
+        
+        # Step 4: Melt the dataframe to long format
+        logger.info("Step 4: Melt the dataframe to long format")
+        df_long = df.melt(id_vars="cell_line", var_name="gene_col", value_name="mutation_value")
+
+        # Step 5: Convert 'mutation_value' to integer
+        logger.info("Step 5: Convert mutation_value to integer")
+        df_long["mutation_value"] = df_long["mutation_value"].astype(float).astype(int)
+
+        # Step 6: Map gene_col to gene_id
+        logger.info("Step 6: Map gene_col to gene_id")
+        df_long["gene_id"] = df_long["gene_col"].map(clean_column_map)
+
+        # Step 7: (Optional) Filter rows to include only specific mutation values
+        logger.info("Step 7: (Optional) Filter rows to include only specific mutation values")
+        df_long = df_long[df_long["mutation_value"].isin([0, 2])]
+
+        # Step 8: Final DataFrame for DB insertion
+        logger.info("Step 8: Final DataFrame for DB insertion")
+        
+        df_final = df_long[["cell_line", "gene_id", "mutation_value"]].copy()
+        
+        logger.info(f"Total number of rows that will be inserted into '{table_name}' table =  {df_final.shape[0]}")
+
+        # Step 9: Write to CSV buffer
+        logger.info("Step 9: Write to CSV buffer")
+        csv_buffer = io.StringIO()
+        df_final.to_csv(csv_buffer, index=False, header=False)
+        csv_buffer.seek(0)
+
+        # Step 10: Insert into PostgreSQL
+        logger.info("Step 10: Insert into PostgreSQL")
+        with pg_conn.cursor() as cursor:
+            cursor.copy_expert(
+                f"COPY {table_name} (cell_line, gene_id, mutation_value) FROM STDIN WITH CSV",
+                csv_buffer
+            )
+        pg_conn.commit()
+
     except Exception as e:
         traceback.print_exc() 
         pg_conn.rollback()
@@ -296,9 +328,7 @@ def refresh_damaging_mutations():
         pg_conn.commit()
         cursor.close()
         end_time_main = datetime.now()
-        logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
-
-
+        logger.info(f"Completed refresh process for table '{table_name}' in {(end_time_main - start_time_main).seconds} seconds.")
 
 
 #Task_4: Create a merged table that brings in Mutation Value by cell line (ACH-….)
