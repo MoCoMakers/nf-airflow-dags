@@ -43,6 +43,12 @@ im_sprime_solved_s_prime_select_sql = _config['sql']['im_sprime_solved_s_prime_s
 im_sprime_s_prime_with_mutations_table_sql = _config['sql']['im_sprime_s_prime_with_mutations_table_sql']
 
 
+test_query_select = """select solved_prime.id, mut.cell_line, 'PANCREAS' as tissue, mut.gene_id, mut.mutation_value 
+                                from im_dep_sprime_damaging_mutations mut left join im_sprime_solved_s_prime solved_prime
+                                on solved_prime.depmap_id=mut.cell_line where 
+                                mut.gene_id >= 1 and mut.gene_id <= 200
+                                and solved_prime.ccle_name like '%_PANCREAS'"""
+
 
 DEP_PRISM_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Prism19Q4"
 DEP_PUBLIC_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Public24Q2"
@@ -70,14 +76,17 @@ def build_df(*args, **kwargs):
     
     return df
 
-def fetch_data_from_db(select_sql, params):
+def fetch_data_from_db(select_sql, params=None):
+    start_time = datetime.now()
     cursor = pg_conn.cursor()
-    cursor.execute(select_sql, params)
+    if params:
+        cursor.execute(select_sql, params)
+    else:
+        cursor.execute(select_sql)
     rows = cursor.fetchall()
-    # for r in rows:
-    #     logger.info(pickle.loads(r[1]))
-    #logger.info(f"Total number of rows fetched: {len(rows)}")
-    return rows
+    end_time = datetime.now()
+    print(f"Record count = {len(rows)}, {(end_time - start_time).seconds} seconds")
+    #return rows
 
 
 # Steps to compare CSV data with im_sprime_s_prime_with_mutations table data:
@@ -422,20 +431,20 @@ def merge_in_chunks(tissue, cell_line_mutations_df, s_prime_solved_df, chunk_siz
         with pg_conn.cursor() as cursor:
             # 'cell_line', 'gene_id', 'mutation_value', 's_prime_id', 'tissue'
             cursor.copy_expert(
-                "COPY im_sprime_s_prime_with_mutations_temp (cell_line, gene_id, mutation_value, s_prime_id, tissue) FROM STDIN WITH CSV",
+                "COPY im_sprime_s_prime_with_mutations (cell_line, gene_id, mutation_value, s_prime_id, tissue) FROM STDIN WITH CSV",
                 csv_buffer
             )
             pg_conn.commit()
         #logger.info(f"S-prime mutations data has been saved to database.")
         total_rows_inserted = total_rows_inserted + chunk_merged.shape[0]
-    logger.info(f"Total number of rows inserted into 'im_sprime_s_prime_with_mutations_temp' table for tissue={tissue} = {total_rows_inserted}")
+    logger.info(f"Total number of rows inserted into 'im_sprime_s_prime_with_mutations' table for tissue={tissue} = {total_rows_inserted}")
 
 
 def refresh_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_max, gene_id_increment):
     start_time = datetime.now()
     logger.info(f"refresh_s_prime_mutations_data_efficient started for tissue={tissue}")
 
-    mutations_table_name = "im_sprime_s_prime_with_mutations_temp"
+    mutations_table_name = "im_sprime_s_prime_with_mutations"
     mutations_table_create_sql = im_sprime_s_prime_with_mutations_table_sql
     mutations_drop_table_sql = f"drop table if exists {mutations_table_name}"
 
@@ -499,8 +508,10 @@ def refresh_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_max, gen
 # index_name = "idx_mut_gene_id"
 # table_name = "im_dep_sprime_damaging_mutations"
 # fields = "gene_id"
-#create_indexes("idx_sprime_mut_gene_id", "im_sprime_s_prime_with_mutations_temp", "gene_id")
+#create_indexes("idx_sprime_mut_gene_id", "im_sprime_s_prime_with_mutations", "gene_id")
 
 #load_cell_damaging_mutations_from_db("LUNG", 1, 1000)
 
-#refresh_s_prime_mutations("LUNG", "INCREMENTAL", 15401, 18916, 50)
+#refresh_s_prime_mutations("PANCREAS", "INCREMENTAL", 1, 18916, 60)
+
+fetch_data_from_db(test_query_select)

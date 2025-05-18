@@ -337,11 +337,11 @@ def refresh_damaging_mutations():
         logger.info(f"Completed refresh process for table '{table_name}' in {(end_time_main - start_time_main).seconds} seconds.")
 
 
-def refresh_s_prime_mutations(tissue, load_type):
+def refresh_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_max, gene_id_increment):
     start_time = datetime.now()
     logger.info(f"refresh_s_prime_mutations_data_efficient started for tissue={tissue}")
 
-    mutations_table_name = "im_sprime_s_prime_with_mutations_temp"
+    mutations_table_name = "im_sprime_s_prime_with_mutations"
     mutations_table_create_sql = im_sprime_s_prime_with_mutations_table_sql
     mutations_drop_table_sql = f"drop table if exists {mutations_table_name}"
 
@@ -377,10 +377,6 @@ def refresh_s_prime_mutations(tissue, load_type):
 
         formatted_cell_lines = ', '.join(f"'{w[0]}'" for w in tissue_cell_lines)
 
-        gene_id_start = 1
-        gene_id_max = 18916
-        gene_id_increment = 250
-
         start_id = gene_id_start
 
         logger.info(f"gene_id_start={gene_id_start}, gene_id_max={gene_id_max}, gene_id_increment={gene_id_increment}")
@@ -398,9 +394,83 @@ def refresh_s_prime_mutations(tissue, load_type):
         cursor.close()
         end_time = datetime.now()
         logger.info(f"Completed in {(end_time - start_time).seconds} seconds")
-        
 
-def merge_in_chunks(tissue, cell_line_mutations_df, s_prime_solved_df, chunk_size=25000):
+
+def refresh_s_prime_mutations_sql(tissue, load_type, gene_id_start, gene_id_max, gene_id_increment):
+    start_time = datetime.now()
+    logger.info(f"refresh_s_prime_mutations_sql started for tissue={tissue}")
+
+    mutations_table_name = "im_sprime_s_prime_with_mutations"
+    mutations_table_create_sql = im_sprime_s_prime_with_mutations_table_sql
+    mutations_drop_table_sql = f"drop table if exists {mutations_table_name}"
+
+    pg_conn = pg_hook.get_conn()
+    cursor = pg_conn.cursor()
+
+    try:
+        # If load type is not incremental, table will be recreated.
+        if load_type == "INCREMENTAL":
+            logger.info(f"Data load type '{load_type}' detected; the database table(s) will not be recreated.")
+            
+        # INITIAL
+        else:
+            logger.info(f"Data load type '{load_type}' detected; the database table(s) will be recreated.")
+            
+            # 1) Drop existing table(s)
+            cursor.execute(mutations_drop_table_sql)
+            pg_conn.commit()
+
+            # 2) Create a new table
+            cursor.execute(mutations_table_create_sql)
+            pg_conn.commit()
+            logger.info(f"DB table {mutations_table_name} has been created.")
+
+        start_id = gene_id_start
+
+        logger.info(f"gene_id_start={gene_id_start}, gene_id_max={gene_id_max}, gene_id_increment={gene_id_increment}")
+        while start_id <= gene_id_max:
+            end_id = (start_id + gene_id_increment) - 1
+            logger.info(f"Started for gene ids between [{start_id} - {end_id}].")
+            sprime_mutation_rows = fetch_data_from_db(refresh_mutations_source_data_select, (tissue, start_id, end_id, f"%_{tissue}"))
+            save_in_chunks(tissue, sprime_mutation_rows)
+            start_id = start_id + gene_id_increment
+    except Exception as e:
+        traceback.print_exc() 
+    finally:
+        cursor.close()
+        end_time = datetime.now()
+        logger.info(f"Completed in {(end_time - start_time).seconds} seconds")
+
+def save_in_chunks(tissue, sprime_mutation_data, chunk_size=50000):
+    total_rows_inserted = 0
+
+    logger.info(f"Chunk Size = {chunk_size}")
+    # Split large DataFrame into smaller chunks
+
+    for i, start in enumerate(range(0, len(sprime_mutation_data), chunk_size)):
+        logger.info(f"Processing chunk {i}")
+        end = start + chunk_size
+        chunk = sprime_mutation_data[start:end]
+        
+        # Write chunk to CSV buffer using csv.writer
+        csv_buffer = io.StringIO()
+        writer = csv.writer(csv_buffer)
+        writer.writerows(chunk)
+        csv_buffer.seek(0)
+
+        # Use COPY FROM with the StringIO object
+        with pg_conn.cursor() as cursor:
+            # 'cell_line', 'gene_id', 'mutation_value', 's_prime_id', 'tissue'
+            cursor.copy_expert(
+                "COPY im_sprime_s_prime_with_mutations (cell_line, gene_id, mutation_value, s_prime_id, tissue) FROM STDIN WITH CSV",
+                csv_buffer
+            )
+            pg_conn.commit()
+        total_rows_inserted += len(chunk)
+    logger.info(f"Total number of records inserted into DB for tissue={tissue} = {total_rows_inserted}")
+
+
+def merge_in_chunks(tissue, cell_line_mutations_df, s_prime_solved_df, chunk_size=50000):
     total_rows_inserted = 0
 
     logger.info(f"Chunk Size = {chunk_size}")
@@ -412,43 +482,33 @@ def merge_in_chunks(tissue, cell_line_mutations_df, s_prime_solved_df, chunk_siz
         end = start + chunk_size
         chunk = cell_line_mutations_df.iloc[start:end]
 
-        #chunk.set_index("cell_line", inplace=True, drop=False)
 
         # Merge chunk with reference DataFrame
-        #logger.info("Merge chunk with reference DataFrame")
         chunk_merged = pd.merge(chunk, s_prime_solved_df, left_on="cell_line", right_on="depmap_id", how="left")
-        #chunk_merged = chunk.merge(s_prime_solved_df, left_index=True, right_index=True, how="left").reset_index(drop=True)
 
         # Drop unnecessary columns
-        #logger.info("Drop unnecessary columns")
         chunk_merged = chunk_merged.drop(columns=["depmap_id"])
 
-        #logger.info("Create the 'tissue' column")
         chunk_merged["tissue"] = tissue
 
         # Convert mutation_value to integer
-        #logger.info("Convert 'mutation_value' to integer")
         chunk_merged["mutation_value"] = chunk_merged["mutation_value"].astype(float).astype(int)
 
-        #logger.info("Start to copy the chunk to csv_buffer")
         # Create a StringIO object to write DataFrame as CSV
         csv_buffer = io.StringIO()
         chunk_merged.to_csv(csv_buffer, index=False, header=False)
         csv_buffer.seek(0)  # Rewind the StringIO object to the beginning
 
-        #logger.info(f"csv_buffer copy is complete.")
-
         # Use COPY FROM with the StringIO object
         with pg_conn.cursor() as cursor:
             # 'cell_line', 'gene_id', 'mutation_value', 's_prime_id', 'tissue'
             cursor.copy_expert(
-                "COPY im_sprime_s_prime_with_mutations_temp (cell_line, gene_id, mutation_value, s_prime_id, tissue) FROM STDIN WITH CSV",
+                "COPY im_sprime_s_prime_with_mutations (cell_line, gene_id, mutation_value, s_prime_id, tissue) FROM STDIN WITH CSV",
                 csv_buffer
             )
             pg_conn.commit()
-        #logger.info(f"S-prime mutations data has been saved to database.")
         total_rows_inserted = total_rows_inserted + chunk_merged.shape[0]
-    logger.info(f"Total number of rows inserted into 'im_sprime_s_prime_with_mutations_temp' table for tissue={tissue} = {total_rows_inserted}")
+    logger.info(f"Total number of records inserted into DB for tissue={tissue} = {total_rows_inserted}")
 
 
 def median_absolute_deviation(data):
