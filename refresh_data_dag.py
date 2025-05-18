@@ -35,8 +35,9 @@ def refreshData():
     #refresh_data_methods.refresh_secondary_dose_curve()
     #refresh_data_methods.refresh_s_prime()
     #refresh_data_methods.refresh_damaging_mutations()
-    refresh_data_methods.refresh_mutations("PANCREAS", "INCREMENTAL")
-    #refresh_pooled_delta_s_results(7300, "LUNG")
+    #refresh_data_methods.refresh_s_prime_mutations('LUNG', 'INITIAL')
+    #refresh_data_methods.load_cell_damaging_mutations_from_db('LUNG', 1, 1000)
+    return None
 
 
 refresh_data_task = PythonOperator(
