@@ -36,7 +36,8 @@ def refreshData():
     #refresh_data_methods.refresh_s_prime()
     #refresh_data_methods.refresh_damaging_mutations()
     #refresh_data_methods.refresh_s_prime_mutations('PANCREAS', 'INCREMENTAL', 1, 3000, 50)
-    refresh_data_methods.refresh_s_prime_mutations_sql('PANCREAS', 'INCREMENTAL', 6001, 9000, 100)
+    #refresh_data_methods.refresh_s_prime_mutations_sql('PANCREAS', 'INCREMENTAL', 11051, 18916, 50)
+    refresh_data_methods.refresh_pooled_s_prime('LUNG', 'INITIAL', 7300, 7300, 1)
 
 
 refresh_data_task = PythonOperator(

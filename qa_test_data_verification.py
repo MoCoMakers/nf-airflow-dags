@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)  # This logger will be used across all func
 
 _config = utils.get_config_data_refresh()
 
+gene_mutation_data_counts_table_sql = _config['sql']['gene_mutation_data_counts_table_sql']
+gene_mutation_data_counts_insert_sql = _config['sql']['gene_mutation_data_counts_insert_sql']
 
 im_sprime_s_prime_with_mutations_insert_sql = _config['sql']['im_sprime_s_prime_with_mutations_insert_sql']
 
@@ -43,11 +45,7 @@ im_sprime_solved_s_prime_select_sql = _config['sql']['im_sprime_solved_s_prime_s
 im_sprime_s_prime_with_mutations_table_sql = _config['sql']['im_sprime_s_prime_with_mutations_table_sql']
 
 
-test_query_select = """select solved_prime.id, mut.cell_line, 'PANCREAS' as tissue, mut.gene_id, mut.mutation_value 
-                                from im_dep_sprime_damaging_mutations mut left join im_sprime_solved_s_prime solved_prime
-                                on solved_prime.depmap_id=mut.cell_line where 
-                                mut.gene_id >= 1 and mut.gene_id <= 200
-                                and solved_prime.ccle_name like '%_PANCREAS'"""
+test_query_select = """select * from im_sprime_s_prime_with_mutations mut where mut.gene_id>=1 and mut.gene_id<=100 and tissue='LUNG'"""
 
 
 DEP_PRISM_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Prism19Q4"
@@ -498,6 +496,73 @@ def refresh_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_max, gen
         logger.info(f"Completed in {(end_time - start_time).seconds} seconds")
 
 
+def refresh_data_counts(tissue, source_table_name, gene_id_start, gene_id_max, increment, load_type):
+    start_time = datetime.now()
+    cursor = pg_conn.cursor()
+    total_data = 0
+
+    data_type = None
+    if source_table_name == 'im_sprime_s_prime_with_mutations':
+        data_type = 'SPRIME_MUTATION'
+    elif source_table_name == 'fnl_sprime_pooled_delta_sprime':
+        data_type = 'SPRIME_POOL'
+
+
+    table_name = "im_gene_mutation_data_counts"
+    try:
+        # If load type is not incremental, table will be recreated.
+        if load_type == "INCREMENTAL":
+            logger.info(f"Data load type '{load_type}' detected; the database table(s) will not be recreated.")
+            
+        # INITIAL
+        else:
+            logger.info(f"Data load type '{load_type}' detected; the database table(s) will be recreated.")
+            
+            # 1) Drop existing table(s)
+            cursor.execute(f"drop table if exists {table_name}")
+            pg_conn.commit()
+
+            # 2) Create a new table
+            cursor.execute(gene_mutation_data_counts_table_sql)
+            pg_conn.commit()
+            logger.info(f"DB table {table_name} has been created.")
+
+        
+        start_id = gene_id_start
+        while start_id <= gene_id_max:
+            insert_rows = []
+            end_id = min(start_id + increment - 1, gene_id_max)
+
+            query = f"""
+                SELECT '{data_type}', gene_id, %s, COUNT(*)
+                FROM {source_table_name}
+                WHERE tissue = %s AND gene_id >= %s AND gene_id <= %s
+                GROUP BY gene_id
+            """
+            cursor.execute(query, (tissue, tissue, start_id, end_id))
+            data_count_rows = cursor.fetchall()
+
+            # data_type, gene_id, tissue, data_count
+            for row in data_count_rows:
+                total_data += row[3]
+                insert_rows.append(row)
+            start_id += increment
+        
+            cursor.executemany(gene_mutation_data_counts_insert_sql, insert_rows)   
+            pg_conn.commit()    
+
+        logger.info(f"Total number of {data_type} data for tissue={tissue} and genes [{gene_id_start} - {gene_id_max}]: {total_data}")
+
+    except Exception as e:
+        traceback.print_exc()
+        pg_conn.rollback()
+    finally:
+        pg_conn.commit()
+        cursor.close()
+        end_time = datetime.now()
+        logger.info(f"Completed in {(end_time - start_time).seconds} seconds")
+
+
 #qa_verify_fnl_sprime_pooled_delta_sprime("pooled_delta_s_prime.csv", 7300, "LUNG")
 #qa_verify_im_sprime_s_prime_with_mutations_table("s_prime_mutation_tissue.csv",  7300, "LUNG")
 
@@ -505,13 +570,16 @@ def refresh_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_max, gen
 
 #refresh_mutations_helper('LUNG', 7300, 7300)
 
-# index_name = "idx_mut_gene_id"
-# table_name = "im_dep_sprime_damaging_mutations"
-# fields = "gene_id"
-#create_indexes("idx_sprime_mut_gene_id", "im_sprime_s_prime_with_mutations", "gene_id")
+#create_indexes("idx_mut_gene_id_tissue", "im_sprime_s_prime_with_mutations", "gene_id, tissue")
 
 #load_cell_damaging_mutations_from_db("LUNG", 1, 1000)
 
 #refresh_s_prime_mutations("PANCREAS", "INCREMENTAL", 1, 18916, 60)
+
+#fetch_data_from_db(test_query_select)
+
+# tissue, source_table_name, gene_id_start, gene_id_max, increment, load_type
+#refresh_data_counts('LUNG', 'im_sprime_s_prime_with_mutations', 1, 18916, 250, 'INITIAL')
+#refresh_data_counts('PANCREAS', 'im_sprime_s_prime_with_mutations', 1, 18916, 250, 'INCREMENTAL')
 
 fetch_data_from_db(test_query_select)

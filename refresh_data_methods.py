@@ -381,7 +381,7 @@ def refresh_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_max, gen
 
         logger.info(f"gene_id_start={gene_id_start}, gene_id_max={gene_id_max}, gene_id_increment={gene_id_increment}")
         while start_id <= gene_id_max:
-            end_id = (start_id + gene_id_increment) - 1
+            end_id = min(start_id + gene_id_increment - 1, gene_id_max)
             logger.info(f"Started for gene ids between [{start_id} - {end_id}].")
             damaging_mutations_rows = load_cell_damaging_mutations_from_db(formatted_cell_lines, start_id, end_id)
             #logger.info(f"Total number of mutation rows for tissue={tissue} and gene ids between [{start_id} - {end_id}]: {len(damaging_mutations_rows)}")
@@ -429,7 +429,7 @@ def refresh_s_prime_mutations_sql(tissue, load_type, gene_id_start, gene_id_max,
 
         logger.info(f"gene_id_start={gene_id_start}, gene_id_max={gene_id_max}, gene_id_increment={gene_id_increment}")
         while start_id <= gene_id_max:
-            end_id = (start_id + gene_id_increment) - 1
+            end_id = min(start_id + gene_id_increment - 1, gene_id_max)
             logger.info(f"Started for gene ids between [{start_id} - {end_id}].")
             sprime_mutation_rows = fetch_data_from_db(refresh_mutations_source_data_select, (tissue, start_id, end_id, f"%_{tissue}"))
             save_in_chunks(tissue, sprime_mutation_rows)
@@ -573,11 +573,11 @@ def refresh_pooled_s_prime(tissue, load_type, gene_id_start, gene_id_max, gene_i
 
         logger.info(f"gene_id_start={gene_id_start}, gene_id_max={gene_id_max}, gene_id_increment={gene_id_increment}")
         while start_id <= gene_id_max:
-            end_id = (start_id + gene_id_increment) - 1
+            end_id = min(start_id + gene_id_increment - 1, gene_id_max)
             logger.info(f"Started for gene ids between [{start_id} - {end_id}].")
-            names_for_tissue = fetch_data_from_db(names_for_tissue_select, (f"%_{tissue},"))
-            formatted_names_for_tissue = ', '.join(f"'{w}'" for w in names_for_tissue)
-            pooled_sprime_mutations = fetch_data_from_db(source_data_for_fnl_sprime_table.format(formatted_names_for_tissue), (start_id, end_id, tissue))
+            names_for_tissue = fetch_data_from_db(names_for_tissue_select, (f"%_{tissue}",))
+            formatted_s_prime_names = ', '.join(f"""'{w[0].replace("'", "''")}'""" for w in names_for_tissue)
+            pooled_sprime_mutations = fetch_data_from_db(source_data_for_fnl_sprime_table.format(formatted_s_prime_names), (start_id, end_id, tissue))
             # gene_id, mutation_value, name, s_prime, auc, ec50, cell_line, moa, target
             pooled_sprime_mutations_df = pd.DataFrame(pooled_sprime_mutations, columns=["name", "cell_line", "s_prime", "ec50", "auc", "moa", "target", "gene_id", "mutation_value"])
             refresh_pooled_s_prime_helper(tissue, pooled_sprime_mutations_df)
@@ -698,7 +698,4 @@ def prepare_pooled_delta_s_results(source_df):
         return [str(x)]
 
     compounds_merge['moa'] = compounds_merge['moa'].apply(format_to_array)
-    
-    #logger.info(f"The DataFrame has {len(compounds_merge)} rows and {compounds_merge.shape[1]} columns.")
-
     return compounds_merge
