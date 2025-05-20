@@ -45,16 +45,13 @@ im_sprime_solved_s_prime_select_sql = _config['sql']['im_sprime_solved_s_prime_s
 im_sprime_s_prime_with_mutations_table_sql = _config['sql']['im_sprime_s_prime_with_mutations_table_sql']
 
 
-test_query_select = """select * from im_sprime_s_prime_with_mutations mut where mut.gene_id>=1 and mut.gene_id<=100 and tissue='LUNG'"""
-
-
 DEP_PRISM_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Prism19Q4"
 DEP_PUBLIC_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Public24Q2"
 
-postgres_host = "XXXXX"
-postgres_name = "XXXXX"
-postgres_user = "XXXXX"
-postgres_password = "XXXXX"
+postgres_host = "XXXXXX"
+postgres_name = "XXXXXX"
+postgres_user = "XXXXXX"
+postgres_password = "XXXXXX"
 
 
 pg_conn = psycopg2.connect(
@@ -84,7 +81,7 @@ def fetch_data_from_db(select_sql, params=None):
     rows = cursor.fetchall()
     end_time = datetime.now()
     print(f"Record count = {len(rows)}, {(end_time - start_time).seconds} seconds")
-    #return rows
+    return rows
 
 
 # Steps to compare CSV data with im_sprime_s_prime_with_mutations table data:
@@ -582,4 +579,6 @@ def refresh_data_counts(tissue, source_table_name, gene_id_start, gene_id_max, i
 #refresh_data_counts('LUNG', 'im_sprime_s_prime_with_mutations', 1, 18916, 250, 'INITIAL')
 #refresh_data_counts('PANCREAS', 'im_sprime_s_prime_with_mutations', 1, 18916, 250, 'INCREMENTAL')
 
-fetch_data_from_db(test_query_select)
+#CREATE INDEX idx_mut_gene_tissue_line ON im_sprime_s_prime_with_mutations (gene_id, tissue, cell_line);
+#create_indexes("idx_mut_gene_tissue_line", "im_sprime_s_prime_with_mutations", "gene_id, tissue, cell_line")
+

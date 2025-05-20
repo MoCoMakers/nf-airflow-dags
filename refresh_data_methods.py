@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import time
 import numpy as np
+from collections import defaultdict
 from scipy.stats import mannwhitneyu
 import csv
 import sys
@@ -339,11 +340,9 @@ def refresh_damaging_mutations():
 
 def refresh_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_max, gene_id_increment):
     start_time = datetime.now()
-    logger.info(f"refresh_s_prime_mutations_data_efficient started for tissue={tissue}")
+    logger.info(f"refresh_s_prime_mutations started for tissue={tissue}")
 
-    mutations_table_name = "im_sprime_s_prime_with_mutations"
-    mutations_table_create_sql = im_sprime_s_prime_with_mutations_table_sql
-    mutations_drop_table_sql = f"drop table if exists {mutations_table_name}"
+    table_name = "im_sprime_s_prime_with_mutations"
 
     pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
@@ -358,81 +357,23 @@ def refresh_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_max, gen
             logger.info(f"Data load type '{load_type}' detected; the database table(s) will be recreated.")
             
             # 1) Drop existing table(s)
-            cursor.execute(mutations_drop_table_sql)
+            cursor.execute(f"drop table if exists {table_name}")
             pg_conn.commit()
 
             # 2) Create a new table
-            cursor.execute(mutations_table_create_sql)
+            cursor.execute(im_sprime_s_prime_with_mutations_table_sql)
             pg_conn.commit()
-            logger.info(f"DB table {mutations_table_name} has been created.")
-
-        # Fetch s_prime_solved_df (small lookup table)
-        s_prime_solved_data = fetch_data_from_db(im_sprime_solved_s_prime_select_sql, (f"%_{tissue}",))
-        s_prime_solved_df = pd.DataFrame(s_prime_solved_data, columns=["s_prime_id", "depmap_id"])
-        #s_prime_solved_df.set_index("depmap_id", inplace=True, drop=False)
-
-        cursor.execute(cell_lines_for_tissue_select, (f"%_{tissue}",))
-        tissue_cell_lines = cursor.fetchall()
-        logger.info(f"Total number of cell lines for tissue={tissue}: {len(tissue_cell_lines)}")
-
-        formatted_cell_lines = ', '.join(f"'{w[0]}'" for w in tissue_cell_lines)
+            logger.info(f"DB table {table_name} has been created.")
 
         start_id = gene_id_start
 
         logger.info(f"gene_id_start={gene_id_start}, gene_id_max={gene_id_max}, gene_id_increment={gene_id_increment}")
-        while start_id <= gene_id_max:
-            end_id = min(start_id + gene_id_increment - 1, gene_id_max)
-            logger.info(f"Started for gene ids between [{start_id} - {end_id}].")
-            damaging_mutations_rows = load_cell_damaging_mutations_from_db(formatted_cell_lines, start_id, end_id)
-            #logger.info(f"Total number of mutation rows for tissue={tissue} and gene ids between [{start_id} - {end_id}]: {len(damaging_mutations_rows)}")
-            damaging_mutations_df = pd.DataFrame(damaging_mutations_rows, columns=["cell_line", "gene_id", "mutation_value"])
-            merge_in_chunks(tissue, damaging_mutations_df, s_prime_solved_df)
-            start_id = start_id + gene_id_increment
-    except Exception as e:
-        traceback.print_exc() 
-    finally:
-        cursor.close()
-        end_time = datetime.now()
-        logger.info(f"Completed in {(end_time - start_time).seconds} seconds")
-
-
-def refresh_s_prime_mutations_sql(tissue, load_type, gene_id_start, gene_id_max, gene_id_increment):
-    start_time = datetime.now()
-    logger.info(f"refresh_s_prime_mutations_sql started for tissue={tissue}")
-
-    mutations_table_name = "im_sprime_s_prime_with_mutations"
-    mutations_table_create_sql = im_sprime_s_prime_with_mutations_table_sql
-    mutations_drop_table_sql = f"drop table if exists {mutations_table_name}"
-
-    pg_conn = pg_hook.get_conn()
-    cursor = pg_conn.cursor()
-
-    try:
-        # If load type is not incremental, table will be recreated.
-        if load_type == "INCREMENTAL":
-            logger.info(f"Data load type '{load_type}' detected; the database table(s) will not be recreated.")
-            
-        # INITIAL
-        else:
-            logger.info(f"Data load type '{load_type}' detected; the database table(s) will be recreated.")
-            
-            # 1) Drop existing table(s)
-            cursor.execute(mutations_drop_table_sql)
-            pg_conn.commit()
-
-            # 2) Create a new table
-            cursor.execute(mutations_table_create_sql)
-            pg_conn.commit()
-            logger.info(f"DB table {mutations_table_name} has been created.")
-
-        start_id = gene_id_start
-
-        logger.info(f"gene_id_start={gene_id_start}, gene_id_max={gene_id_max}, gene_id_increment={gene_id_increment}")
+        table_columns = ['cell_line', 'gene_id', 'mutation_value', 's_prime_id', 'tissue']
         while start_id <= gene_id_max:
             end_id = min(start_id + gene_id_increment - 1, gene_id_max)
             logger.info(f"Started for gene ids between [{start_id} - {end_id}].")
             sprime_mutation_rows = fetch_data_from_db(refresh_mutations_source_data_select, (tissue, start_id, end_id, f"%_{tissue}"))
-            save_in_chunks(tissue, sprime_mutation_rows)
+            save_in_chunks_list(tissue, table_name, table_columns, sprime_mutation_rows)
             start_id = start_id + gene_id_increment
     except Exception as e:
         traceback.print_exc() 
@@ -441,17 +382,100 @@ def refresh_s_prime_mutations_sql(tissue, load_type, gene_id_start, gene_id_max,
         end_time = datetime.now()
         logger.info(f"Completed in {(end_time - start_time).seconds} seconds")
 
-def save_in_chunks(tissue, sprime_mutation_data, chunk_size=100000):
+
+def refresh_pooled_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_max, gene_id_increment):
+    start_time = datetime.now()
+    logger.info(f"refresh_pooled_s_prime_mutations started for tissue={tissue}")
+
+    table_name = "fnl_sprime_pooled_delta_sprime"
+
+    pg_conn = pg_hook.get_conn()
+    cursor = pg_conn.cursor()
+
+    try:
+        # If load type is not incremental, table will be recreated.
+        if load_type == "INCREMENTAL":
+            logger.info(f"Data load type '{load_type}' detected; the database table(s) will not be recreated.")
+            
+        # INITIAL
+        else:
+            logger.info(f"Data load type '{load_type}' detected; the database table(s) will be recreated.")
+            
+            # 1) Drop existing table(s)
+            cursor.execute(f"drop table if exists {table_name}")
+            pg_conn.commit()
+
+            # 2) Create a new table
+            cursor.execute(fnl_sprime_pooled_delta_sprime_table_sql)
+            pg_conn.commit()
+            logger.info(f"DB table {table_name} has been created.")
+
+        start_id = gene_id_start
+
+        solved_prime_query = """SELECT id AS s_prime_id, depmap_id, ccle_name, name, s_prime, ec50, auc, moa, target
+                                FROM im_sprime_solved_s_prime WHERE ccle_name LIKE %s order by depmap_id"""
+        solved_prime_df = pd.read_sql(solved_prime_query, pg_conn, params=(f"%_{tissue}",))
+
+        # Fetch mutation data
+        mutation_query = """SELECT cell_line, gene_id, mutation_value FROM im_dep_sprime_damaging_mutations WHERE gene_id BETWEEN %s AND %s  order by gene_id"""
+       
+        prep_columns = ["gene_id", "mutation_value", "name", "s_prime", "auc", "ec50", "cell_line", "moa", "target"]
+
+       
+        logger.info(f"gene_id_start={gene_id_start}, gene_id_max={gene_id_max}, gene_id_increment={gene_id_increment}")
+        while start_id <= gene_id_max:
+            end_id = min(start_id + gene_id_increment - 1, gene_id_max)
+            logger.info(f"Started for gene ids between [{start_id} - {end_id}].")
+            sprime_mutation_rows = fetch_data_from_db(mutation_query, (start_id, end_id))
+            mutation_df = pd.DataFrame(sprime_mutation_rows, columns=["cell_line", "gene_id", "mutation_value"])
+            merged_df = pd.merge(mutation_df, solved_prime_df, left_on="cell_line", right_on="depmap_id", how="left")
+            sprime_pooled_df = prepare_pooled_delta_s_results(merged_df[prep_columns], tissue)
+            save_in_chunks_df(tissue, table_name, sprime_pooled_df)
+            start_id = start_id + gene_id_increment
+    except Exception as e:
+        traceback.print_exc() 
+    finally:
+        cursor.close()
+        end_time = datetime.now()
+        logger.info(f"Completed in {(end_time - start_time).seconds} seconds")
+
+
+def save_in_chunks_df(tissue, table, data_df, chunk_size=100000):
     total_rows_inserted = 0
 
     logger.info(f"Chunk Size = {chunk_size}")
-    # Split large DataFrame into smaller chunks
 
-    for i, start in enumerate(range(0, len(sprime_mutation_data), chunk_size)):
-        # if i % 15 == 0:
-        #     logger.info(f"Processing chunk {i}")
+    column_names = data_df.columns.tolist()
+    for i, start in enumerate(range(0, len(data_df), chunk_size)):
         end = start + chunk_size
-        chunk = sprime_mutation_data[start:end]
+        chunk = data_df.iloc[start:end]
+        
+        # Create a StringIO object to write DataFrame as CSV
+        csv_buffer = io.StringIO()
+        data_df.to_csv(csv_buffer, index=False, header=False)
+        csv_buffer.seek(0)  # Rewind the StringIO object to the beginning
+        logger.info(f"Chunk has been copied to CSV.")
+
+
+        # Use COPY FROM with the StringIO object
+        with pg_conn.cursor() as cursor:
+            cursor.copy_expert(
+                f"COPY {table} ({', '.join(column_names)}) FROM STDIN WITH CSV",
+                csv_buffer
+            )
+            pg_conn.commit()
+        total_rows_inserted += len(chunk)
+    logger.info(f"Total number of records inserted into '{table}' table for tissue={tissue} = {total_rows_inserted}")
+
+
+def save_in_chunks_list(tissue, table, columns, data_list, chunk_size=100000):
+    total_rows_inserted = 0
+
+    logger.info(f"Chunk Size = {chunk_size}")
+
+    for i, start in enumerate(range(0, len(data_list), chunk_size)):
+        end = start + chunk_size
+        chunk = data_list[start:end]
         
         # Write chunk to CSV buffer using csv.writer
         csv_buffer = io.StringIO()
@@ -461,55 +485,13 @@ def save_in_chunks(tissue, sprime_mutation_data, chunk_size=100000):
 
         # Use COPY FROM with the StringIO object
         with pg_conn.cursor() as cursor:
-            # 'cell_line', 'gene_id', 'mutation_value', 's_prime_id', 'tissue'
             cursor.copy_expert(
-                "COPY im_sprime_s_prime_with_mutations (cell_line, gene_id, mutation_value, s_prime_id, tissue) FROM STDIN WITH CSV",
+                f"COPY {table} ({', '.join(columns)}) FROM STDIN WITH CSV",
                 csv_buffer
             )
             pg_conn.commit()
         total_rows_inserted += len(chunk)
-    logger.info(f"Total number of records inserted into DB for tissue={tissue} = {total_rows_inserted}")
-
-
-def merge_in_chunks(tissue, cell_line_mutations_df, s_prime_solved_df, chunk_size=50000):
-    total_rows_inserted = 0
-
-    logger.info(f"Chunk Size = {chunk_size}")
-    # Split large DataFrame into smaller chunks
-
-    #for start in range(0, len(cell_line_mutations_df), chunk_size):  
-    for i, start in enumerate(range(0, len(cell_line_mutations_df), chunk_size)):
-        logger.info(f"Processing chunk {i}")
-        end = start + chunk_size
-        chunk = cell_line_mutations_df.iloc[start:end]
-
-
-        # Merge chunk with reference DataFrame
-        chunk_merged = pd.merge(chunk, s_prime_solved_df, left_on="cell_line", right_on="depmap_id", how="left")
-
-        # Drop unnecessary columns
-        chunk_merged = chunk_merged.drop(columns=["depmap_id"])
-
-        chunk_merged["tissue"] = tissue
-
-        # Convert mutation_value to integer
-        chunk_merged["mutation_value"] = chunk_merged["mutation_value"].astype(float).astype(int)
-
-        # Create a StringIO object to write DataFrame as CSV
-        csv_buffer = io.StringIO()
-        chunk_merged.to_csv(csv_buffer, index=False, header=False)
-        csv_buffer.seek(0)  # Rewind the StringIO object to the beginning
-
-        # Use COPY FROM with the StringIO object
-        with pg_conn.cursor() as cursor:
-            # 'cell_line', 'gene_id', 'mutation_value', 's_prime_id', 'tissue'
-            cursor.copy_expert(
-                "COPY im_sprime_s_prime_with_mutations (cell_line, gene_id, mutation_value, s_prime_id, tissue) FROM STDIN WITH CSV",
-                csv_buffer
-            )
-            pg_conn.commit()
-        total_rows_inserted = total_rows_inserted + chunk_merged.shape[0]
-    logger.info(f"Total number of records inserted into DB for tissue={tissue} = {total_rows_inserted}")
+    logger.info(f"Total number of records inserted into '{table}' table for tissue={tissue} = {total_rows_inserted}")
 
 
 def median_absolute_deviation(data):
@@ -538,124 +520,19 @@ def load_cell_damaging_mutations_from_db(tissue_cell_lines, gene_id_start, gene_
     finally:
         pg_conn.commit()
         cursor.close()
-
-
-def refresh_pooled_s_prime(tissue, load_type, gene_id_start, gene_id_max, gene_id_increment):
-    start_time = datetime.now()
-    logger.info(f"refresh_pooled_s_prime started for tissue={tissue}")
-
-    table_name = "fnl_sprime_pooled_delta_sprime"
-    table_create_sql = fnl_sprime_pooled_delta_sprime_table_sql
-    drop_table_sql = f"drop table if exists {table_name}"
-
-    pg_conn = pg_hook.get_conn()
-    cursor = pg_conn.cursor()
-
-    try:
-        # If load type is not incremental, table will be recreated.
-        if load_type == "INCREMENTAL":
-            logger.info(f"Data load type '{load_type}' detected; the database table(s) will not be recreated.")
-            
-        # INITIAL
-        else:
-            logger.info(f"Data load type '{load_type}' detected; the database table(s) will be recreated.")
-            
-            # 1) Drop existing table(s)
-            cursor.execute(drop_table_sql)
-            pg_conn.commit()
-
-            # 2) Create a new table
-            cursor.execute(table_create_sql)
-            pg_conn.commit()
-            logger.info(f"DB table {table_name} has been created.")
-
-        start_id = gene_id_start
-
-        logger.info(f"gene_id_start={gene_id_start}, gene_id_max={gene_id_max}, gene_id_increment={gene_id_increment}")
-        while start_id <= gene_id_max:
-            end_id = min(start_id + gene_id_increment - 1, gene_id_max)
-            logger.info(f"Started for gene ids between [{start_id} - {end_id}].")
-            names_for_tissue = fetch_data_from_db(names_for_tissue_select, (f"%_{tissue}",))
-            formatted_s_prime_names = ', '.join(f"""'{w[0].replace("'", "''")}'""" for w in names_for_tissue)
-            pooled_sprime_mutations = fetch_data_from_db(source_data_for_fnl_sprime_table.format(formatted_s_prime_names), (start_id, end_id, tissue))
-            # gene_id, mutation_value, name, s_prime, auc, ec50, cell_line, moa, target
-            pooled_sprime_mutations_df = pd.DataFrame(pooled_sprime_mutations, columns=["name", "cell_line", "s_prime", "ec50", "auc", "moa", "target", "gene_id", "mutation_value"])
-            refresh_pooled_s_prime_helper(tissue, pooled_sprime_mutations_df)
-            start_id = start_id + gene_id_increment
-    except Exception as e:
-        traceback.print_exc() 
-    finally:
-        cursor.close()
-        end_time = datetime.now()
-        logger.info(f"Completed in {(end_time - start_time).seconds} seconds")
-
-
-def refresh_pooled_s_prime_helper(tissue, pooled_sprime_mutations_df):
-    try:
-        
-        logger.info(f"pooled_sprime_mutations_df columns: {pooled_sprime_mutations_df.columns}")
-        pooled_s_prime_df =  prepare_pooled_delta_s_results(pooled_sprime_mutations_df)
-        
-        logger.info(f"Pooled S-Prime data has been prepared.")
-        logger.info(f"Pooled S-Prime data length = {pooled_s_prime_df.shape[0]}")
-        
-        # Create a StringIO object to write DataFrame as CSV
-        csv_buffer = io.StringIO()
-        pooled_s_prime_df.to_csv(csv_buffer, index=False, header=False)
-        csv_buffer.seek(0)  # Rewind the StringIO object to the beginning
-        logger.info(f"Pooled s-prime data has been copied to CSV.")
-
-        logger.info(f"Pooled data frame columns: {pooled_s_prime_df.columns}")
-
-        #Use COPY FROM with the StringIO object
-        with pg_conn.cursor() as cursor:
-            cursor.copy_expert(
-                f"""COPY fnl_sprime_pooled_delta_sprime (name, gene_id, ref_pooled_s_prime, ref_median_s_prime, 
-                    ref_mad, ref_pooled_auc, ref_pooled_ec50, num_ref_lines,
-                    ref_s_prime_variance, test_pooled_s_prime, test_median_s_prime,
-                    test_mad, test_pooled_auc, test_pooled_ec50, num_test_lines,
-                    test_s_prime_variance, delta_s_prime, delta_auc, delta_ec50,
-                    delta_s_prime_median, p_val_median_man_whit, sensitivity_score,
-                    sensitivity, moa, target, tissue) FROM STDIN WITH CSV""",
-                csv_buffer
-            )
-            pg_conn.commit()
-        logger.info(f"Pooled s-prime data has been saved to database.")
-    except Exception as e:
-        logger.error(f"Method 'refresh_pooled_s_prime_helper' failed for tissue='{tissue}'.")
-        traceback.print_exc() 
     
 
 # Task_5: Create the Pooled delta S' results table
 # gene_id, mutation_value, name, s_prime, auc, ec50, cell_line, moa, target
-def prepare_pooled_delta_s_results(source_df):
+def prepare_pooled_delta_s_results(source_df, tissue):
     df_ref_group = source_df.loc[source_df['mutation_value'] == 0]
     df_test_group = source_df.loc[source_df['mutation_value'] == 2]
 
-     # Reference group calculations
-    compounds_ref_agg_mean = df_ref_group.groupby(['name', 'gene_id']).agg(
-        ref_pooled_s_prime=pd.NamedAgg(column='s_prime', aggfunc='mean'),
-        ref_median_s_prime=pd.NamedAgg(column='s_prime', aggfunc='median'),
-        ref_mad=pd.NamedAgg(column='s_prime', aggfunc=median_absolute_deviation),
-        ref_pooled_auc=pd.NamedAgg(column='auc', aggfunc='mean'),
-        ref_pooled_ec50=pd.NamedAgg(column='ec50', aggfunc='mean'),
-        # row_name = cell_line
-        num_ref_lines=pd.NamedAgg(column='cell_line', aggfunc='count'),
-        ref_s_prime_variance=pd.NamedAgg(column='s_prime', aggfunc='var')
-    ).reset_index()
-    
-    # Test group calculations
-    compounds_test_agg_mean = df_test_group.groupby(['name', 'gene_id']).agg(
-        test_pooled_s_prime=pd.NamedAgg(column='s_prime', aggfunc='mean'),
-        test_median_s_prime=pd.NamedAgg(column='s_prime', aggfunc='median'),
-        test_mad=pd.NamedAgg(column='s_prime', aggfunc=median_absolute_deviation),
-        test_pooled_auc=pd.NamedAgg(column='auc', aggfunc='mean'),
-        test_pooled_ec50=pd.NamedAgg(column='ec50', aggfunc='mean'),
-        # row_name = cell_line
-        num_test_lines=pd.NamedAgg(column='cell_line', aggfunc='count'),
-        test_s_prime_variance=pd.NamedAgg(column='s_prime', aggfunc='var')
-    ).reset_index()
+    # Reference group calculations
+    compounds_ref_agg_mean = summarize_group(df_ref_group, 'ref')
 
+    # Test group calculations
+    compounds_test_agg_mean = summarize_group(df_test_group, 'test')
 
     # Merging reference and test data
     compounds_merge = pd.merge(compounds_ref_agg_mean, compounds_test_agg_mean, on=['name', 'gene_id'], how='inner')
@@ -668,23 +545,38 @@ def prepare_pooled_delta_s_results(source_df):
     # Additional calculations for median differences
     compounds_merge['delta_s_prime_median'] = compounds_merge['ref_median_s_prime'] - compounds_merge['test_median_s_prime']
 
-    # Calculate p-value using Mann-Whitney U test
+    ref_groups = defaultdict(list)
+    test_groups = defaultdict(list)
+    for (name, gene_id), group in df_ref_group.groupby(['name', 'gene_id']):
+        ref_groups[(name, gene_id)] = group['s_prime'].values
+
+    for (name, gene_id), group in df_test_group.groupby(['name', 'gene_id']):
+        test_groups[(name, gene_id)] = group['s_prime'].values
+
+    # Compute p-values
     p_values = []
-    for index, row in compounds_merge.iterrows():
-        group1 = df_ref_group[df_ref_group['name'] == row['name']]['s_prime']
-        group2 = df_test_group[df_test_group['name'] == row['name']]['s_prime']
-        stat, p_value = mannwhitneyu(group1, group2, alternative='two-sided')
+    for _, row in compounds_merge.iterrows():
+        key = (row['name'], row['gene_id'])
+        group1 = ref_groups.get(key, [])
+        group2 = test_groups.get(key, [])
+        if len(group1) > 0 and len(group2) > 0:
+            stat, p_value = mannwhitneyu(group1, group2, alternative='two-sided')
+        else:
+            p_value = np.nan
         p_values.append(p_value)
 
     compounds_merge['p_val_median_man_whit'] = p_values
-
-
+        
     # Sensitivity calculations
-    compounds_merge['sensitivity_score'] = np.where(compounds_merge['delta_s_prime'] < -0.5, -1,
-                                                        np.where(compounds_merge['delta_s_prime'] > 0.5, 1, 0))
+    conditions = [
+        compounds_merge['delta_s_prime'] < -0.5,
+        compounds_merge['delta_s_prime'] > 0.5
+    ]
+    choices_score = [-1, 1]
+    choices_label = ['Sensitive', 'Resistant']
 
-    compounds_merge['sensitivity'] = np.where(compounds_merge['delta_s_prime'] < -0.5, 'Sensitive',
-                                                        np.where(compounds_merge['delta_s_prime'] > 0.5, 'Resistant', 'Equivocal'))
+    compounds_merge['sensitivity_score'] = np.select(conditions, choices_score, default=0)
+    compounds_merge['sensitivity'] = np.select(conditions, choices_label, default='Equivocal')
     
     # Merging drug MOA information
     df_drug_moa = source_df[["name", "moa", "target"]]
@@ -692,10 +584,28 @@ def prepare_pooled_delta_s_results(source_df):
     compounds_merge = pd.merge(compounds_merge, df_drug_moa_unique, on='name', how='left')
 
     # Formatting MOA
-    def format_to_array(x):
-        if isinstance(x, str):
-            return x.split(",")
-        return [str(x)]
+    compounds_merge['moa'] = compounds_merge['moa'].apply(lambda x: x.split(",") if isinstance(x, str) else [str(x)])
 
-    compounds_merge['moa'] = compounds_merge['moa'].apply(format_to_array)
+    compounds_merge["tissue"] = tissue
+
+    #logger.info(f"Pool data columns: {compounds_merge.columns}")
+    logger.info(f"Pool data row count: {compounds_merge.shape[0]}")
+
     return compounds_merge
+
+def summarize_group(df, prefix):
+    return df.groupby(['name', 'gene_id']).agg(
+        **{f"{prefix}_pooled_s_prime": pd.NamedAgg(column='s_prime', aggfunc='mean'),
+           f"{prefix}_median_s_prime": pd.NamedAgg(column='s_prime', aggfunc='median'),
+           f"{prefix}_mad": pd.NamedAgg(column='s_prime', aggfunc=median_absolute_deviation),
+           f"{prefix}_pooled_auc": pd.NamedAgg(column='auc', aggfunc='mean'),
+           f"{prefix}_pooled_ec50": pd.NamedAgg(column='ec50', aggfunc='mean'),
+           f"num_{prefix}_lines": pd.NamedAgg(column='cell_line', aggfunc='count'),
+           f"{prefix}_s_prime_variance": pd.NamedAgg(column='s_prime', aggfunc='var')}
+    ).reset_index()
+
+
+def compute_pval(row):
+    if len(row['ref_s_prime']) > 0 and len(row['test_s_prime']) > 0:
+        return mannwhitneyu(row['ref_s_prime'], row['test_s_prime'], alternative='two-sided').pvalue
+    return np.nan
