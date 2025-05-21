@@ -443,7 +443,7 @@ def refresh_pooled_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_m
 def save_in_chunks_df(tissue, table, data_df, chunk_size=100000):
     total_rows_inserted = 0
 
-    logger.info(f"Chunk Size = {chunk_size}")
+    #logger.info(f"Chunk Size = {chunk_size}")
 
     column_names = data_df.columns.tolist()
     for i, start in enumerate(range(0, len(data_df), chunk_size)):
@@ -454,7 +454,7 @@ def save_in_chunks_df(tissue, table, data_df, chunk_size=100000):
         csv_buffer = io.StringIO()
         data_df.to_csv(csv_buffer, index=False, header=False)
         csv_buffer.seek(0)  # Rewind the StringIO object to the beginning
-        logger.info(f"Chunk has been copied to CSV.")
+        #logger.info(f"Chunk has been copied to CSV.")
 
 
         # Use COPY FROM with the StringIO object
@@ -471,7 +471,7 @@ def save_in_chunks_df(tissue, table, data_df, chunk_size=100000):
 def save_in_chunks_list(tissue, table, columns, data_list, chunk_size=100000):
     total_rows_inserted = 0
 
-    logger.info(f"Chunk Size = {chunk_size}")
+    #logger.info(f"Chunk Size = {chunk_size}")
 
     for i, start in enumerate(range(0, len(data_list), chunk_size)):
         end = start + chunk_size
@@ -589,7 +589,7 @@ def prepare_pooled_delta_s_results(source_df, tissue):
     compounds_merge["tissue"] = tissue
 
     #logger.info(f"Pool data columns: {compounds_merge.columns}")
-    logger.info(f"Pool data row count: {compounds_merge.shape[0]}")
+    #logger.info(f"Pool data row count: {compounds_merge.shape[0]}")
 
     return compounds_merge
 
