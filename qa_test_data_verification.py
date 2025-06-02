@@ -1,11 +1,9 @@
 import psycopg2
 import traceback
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
-import time
 import numpy as np
-from scipy.stats import mannwhitneyu
 import csv
 import sys
 import os
@@ -48,11 +46,10 @@ im_sprime_s_prime_with_mutations_table_sql = _config['sql']['im_sprime_s_prime_w
 DEP_PRISM_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Prism19Q4"
 DEP_PUBLIC_PATH = "/home/gatlay/nf_streamlit/app/data/DepMap/Public24Q2"
 
-postgres_host = "XXXXXX"
-postgres_name = "XXXXXX"
-postgres_user = "XXXXXX"
-postgres_password = "XXXXXX"
-
+postgres_host = "XXXXX"
+postgres_name = "XXXXX"
+postgres_user = "XXXXX"
+postgres_password = "XXXXX"
 
 pg_conn = psycopg2.connect(
         host=postgres_host,
@@ -236,118 +233,25 @@ def median_absolute_deviation(data):
         mad = np.median(abs_deviation)
         return mad
 
-def prepare_pooled_delta_s_results(source_df):
-    df_ref_group = source_df.loc[source_df['mutation_value'] == 0]
-    df_test_group = source_df.loc[source_df['mutation_value'] == 2]
-
-     # Reference group calculations
-    compounds_ref_agg_mean = df_ref_group.groupby(['name', 'gene_id']).agg(
-        ref_pooled_s_prime=pd.NamedAgg(column='s_prime', aggfunc='mean'),
-        ref_median_s_prime=pd.NamedAgg(column='s_prime', aggfunc='median'),
-        ref_mad=pd.NamedAgg(column='s_prime', aggfunc=median_absolute_deviation),
-        ref_pooled_auc=pd.NamedAgg(column='auc', aggfunc='mean'),
-        ref_pooled_ec50=pd.NamedAgg(column='ec50', aggfunc='mean'),
-        # row_name = cell_line
-        num_ref_lines=pd.NamedAgg(column='cell_line', aggfunc='count'),
-        ref_s_prime_variance=pd.NamedAgg(column='s_prime', aggfunc='var')
-    ).reset_index()
-    
-    # Test group calculations
-    compounds_test_agg_mean = df_test_group.groupby(['name', 'gene_id']).agg(
-        test_pooled_s_prime=pd.NamedAgg(column='s_prime', aggfunc='mean'),
-        test_median_s_prime=pd.NamedAgg(column='s_prime', aggfunc='median'),
-        test_mad=pd.NamedAgg(column='s_prime', aggfunc=median_absolute_deviation),
-        test_pooled_auc=pd.NamedAgg(column='auc', aggfunc='mean'),
-        test_pooled_ec50=pd.NamedAgg(column='ec50', aggfunc='mean'),
-        # row_name = cell_line
-        num_test_lines=pd.NamedAgg(column='cell_line', aggfunc='count'),
-        test_s_prime_variance=pd.NamedAgg(column='s_prime', aggfunc='var')
-    ).reset_index()
-
-
-    # Merging reference and test data
-    compounds_merge = pd.merge(compounds_ref_agg_mean, compounds_test_agg_mean, on=['name', 'gene_id'], how='inner')
-
-    # Calculating deltas
-    compounds_merge['delta_s_prime'] = compounds_merge['ref_pooled_s_prime'] - compounds_merge['test_pooled_s_prime']
-    compounds_merge['delta_auc'] = compounds_merge['ref_pooled_auc'] - compounds_merge['test_pooled_auc']
-    compounds_merge['delta_ec50'] = compounds_merge['ref_pooled_ec50'] - compounds_merge['test_pooled_ec50']
-
-    # Additional calculations for median differences
-    compounds_merge['delta_s_prime_median'] = compounds_merge['ref_median_s_prime'] - compounds_merge['test_median_s_prime']
-
-    # Calculate p-value using Mann-Whitney U test
-    p_values = []
-    for index, row in compounds_merge.iterrows():
-        group1 = df_ref_group[df_ref_group['name'] == row['name']]['s_prime']
-        group2 = df_test_group[df_test_group['name'] == row['name']]['s_prime']
-        stat, p_value = mannwhitneyu(group1, group2, alternative='two-sided')
-        p_values.append(p_value)
-
-    compounds_merge['p_val_median_man_whit'] = p_values
-
-
-    # Sensitivity calculations
-    compounds_merge['sensitivity_score'] = np.where(compounds_merge['delta_s_prime'] < -0.5, -1,
-                                                        np.where(compounds_merge['delta_s_prime'] > 0.5, 1, 0))
-
-    compounds_merge['sensitivity'] = np.where(compounds_merge['delta_s_prime'] < -0.5, 'Sensitive',
-                                                        np.where(compounds_merge['delta_s_prime'] > 0.5, 'Resistant', 'Equivocal'))
-    
-    # Merging drug MOA information
-    df_drug_moa = source_df[["name", "moa", "target"]]
-    df_drug_moa_unique = df_drug_moa.drop_duplicates(subset=['name'])
-    compounds_merge = pd.merge(compounds_merge, df_drug_moa_unique, on='name', how='left')
-
-    # Formatting MOA
-    def format_to_array(x):
-        if isinstance(x, str):
-            return x.split(",")
-        return [str(x)]
-
-    compounds_merge['moa'] = compounds_merge['moa'].apply(format_to_array)
-    
-    logger.info(f"The DataFrame has {len(compounds_merge)} rows and {compounds_merge.shape[1]} columns.")
-
-    logger.info(compounds_merge.columns)
-    return compounds_merge
-
-
-def refresh_mutations_helper(tissue, gene_id_start, gene_id_end):
+def reindex_table(index_name):
     start_time = datetime.now()
     try:
-        logger.info(f"Started processing gene ids between {gene_id_start} and {gene_id_end}")
+        cursor = pg_conn.cursor()
+        cursor.execute(f"REINDEX INDEX {index_name}")
+        pg_conn.commit()
+        logger.info(f"Index {index_name} has been reindexed.")
         
-        # solved_prime.id, mut.cell_line, %%, mut.gene_id, mut.mutation_value, solved_prime.name, solved_prime.s_prime, solved_prime.ec50, solved_prime.auc, solved_prime.moa, solved_prime.target
-        source_df = pd.read_sql(refresh_mutations_source_data_select, pg_conn, params=(tissue, gene_id_start, gene_id_end, f"%{tissue}"))
-
-        columns_to_keep = ['id', 'cell_line', 'tissue', 'gene_id', 'mutation_value']
-        mutations_df  = source_df[columns_to_keep]
-        # Create a StringIO object to write DataFrame as CSV
-        csv_buffer = io.StringIO()
-        mutations_df.to_csv(csv_buffer, index=False, header=False)
-        csv_buffer.seek(0)  # Rewind the StringIO object to the beginning
-
-        prepare_pooled_delta_s_results(source_df)
-
-        # Use COPY FROM with the StringIO object
-        # with pg_conn.cursor() as cursor:
-        #     cursor.copy_expert(
-        #         "COPY im_sprime_s_prime_with_mutations (s_prime_id, cell_line, tissue, gene_id, mutation_value) FROM STDIN WITH CSV",
-        #         csv_buffer
-        #     )
-        #     pg_conn.commit()
     except Exception as e:
         traceback.print_exc() 
     finally:
         end_time = datetime.now()
-        logger.info(f"Duration to prepare and insert data for gene ids between {gene_id_start} and {gene_id_end}: {(end_time - start_time).seconds} seconds")
+        cursor.close()
+        logger.info(f"Duration to complete the process: {(end_time - start_time).seconds} seconds")
 
-def create_indexes(index_name, table_name, fields):
+
+def create_index(index_name, table_name, fields):
     start_time = datetime.now()
-    # index_name = "idx_mut_gene_id"
-    # table_name = "im_dep_sprime_damaging_mutations"
-    # fields = "gene_id"
+    
     drop_index_sql = f"DROP INDEX IF EXISTS {index_name}"
     create_index_sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({fields})"
 
@@ -355,12 +259,13 @@ def create_indexes(index_name, table_name, fields):
         # Create a cursor object
         cursor = pg_conn.cursor()
 
-        # Execute the SQL command
         cursor.execute(drop_index_sql)
-        cursor.execute(create_index_sql)
-
-        # Commit and close
         pg_conn.commit()
+        logger.info(f"Index {index_name} has been dropped.")
+
+        cursor.execute(create_index_sql)
+        pg_conn.commit()
+        logger.info(f"Index {index_name} has been created for fields {fields} .")
         
     except Exception as e:
         traceback.print_exc() 
@@ -384,116 +289,9 @@ def load_cell_damaging_mutations_from_db(tissue_cell_lines, gene_id_start, gene_
         cursor.close()
 
 
-def merge_in_chunks(tissue, cell_line_mutations_df, s_prime_solved_df, chunk_size=50000):
-    total_rows_inserted = 0
-
-    logger.info(f"Chunk Size = {chunk_size}")
-    # Split large DataFrame into smaller chunks
-
-    #for start in range(0, len(cell_line_mutations_df), chunk_size):  
-    for i, start in enumerate(range(0, len(cell_line_mutations_df), chunk_size)):
-        logger.info(f"Processing chunk {i}")
-        end = start + chunk_size
-        chunk = cell_line_mutations_df.iloc[start:end]
-
-        #chunk.set_index("cell_line", inplace=True, drop=False)
-
-        # Merge chunk with reference DataFrame
-        #logger.info("Merge chunk with reference DataFrame")
-        chunk_merged = pd.merge(chunk, s_prime_solved_df, left_on="cell_line", right_on="depmap_id", how="left")
-        #chunk_merged = chunk.merge(s_prime_solved_df, left_index=True, right_index=True, how="left").reset_index(drop=True)
-
-        # Drop unnecessary columns
-        #logger.info("Drop unnecessary columns")
-        chunk_merged = chunk_merged.drop(columns=["depmap_id"])
-
-        #logger.info("Create the 'tissue' column")
-        chunk_merged["tissue"] = tissue
-
-        # Convert mutation_value to integer
-        #logger.info("Convert 'mutation_value' to integer")
-        chunk_merged["mutation_value"] = chunk_merged["mutation_value"].astype(float).astype(int)
-
-        #logger.info("Start to copy the chunk to csv_buffer")
-        # Create a StringIO object to write DataFrame as CSV
-        csv_buffer = io.StringIO()
-        chunk_merged.to_csv(csv_buffer, index=False, header=False)
-        csv_buffer.seek(0)  # Rewind the StringIO object to the beginning
-
-        #logger.info(f"csv_buffer copy is complete.")
-
-        # Use COPY FROM with the StringIO object
-        with pg_conn.cursor() as cursor:
-            # 'cell_line', 'gene_id', 'mutation_value', 's_prime_id', 'tissue'
-            cursor.copy_expert(
-                "COPY im_sprime_s_prime_with_mutations (cell_line, gene_id, mutation_value, s_prime_id, tissue) FROM STDIN WITH CSV",
-                csv_buffer
-            )
-            pg_conn.commit()
-        #logger.info(f"S-prime mutations data has been saved to database.")
-        total_rows_inserted = total_rows_inserted + chunk_merged.shape[0]
-    logger.info(f"Total number of rows inserted into 'im_sprime_s_prime_with_mutations' table for tissue={tissue} = {total_rows_inserted}")
-
-
-def refresh_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_max, gene_id_increment):
-    start_time = datetime.now()
-    logger.info(f"refresh_s_prime_mutations_data_efficient started for tissue={tissue}")
-
-    mutations_table_name = "im_sprime_s_prime_with_mutations"
-    mutations_table_create_sql = im_sprime_s_prime_with_mutations_table_sql
-    mutations_drop_table_sql = f"drop table if exists {mutations_table_name}"
-
-    cursor = pg_conn.cursor()
-
-    try:
-        # If load type is not incremental, table will be recreated.
-        if load_type == "INCREMENTAL":
-            logger.info(f"Data load type '{load_type}' detected; the database table(s) will not be recreated.")
-            
-        # INITIAL
-        else:
-            logger.info(f"Data load type '{load_type}' detected; the database table(s) will be recreated.")
-            
-            # 1) Drop existing table(s)
-            cursor.execute(mutations_drop_table_sql)
-            pg_conn.commit()
-
-            # 2) Create a new table
-            cursor.execute(mutations_table_create_sql)
-            pg_conn.commit()
-            logger.info(f"DB table {mutations_table_name} has been created.")
-
-        # Fetch s_prime_solved_df (small lookup table)
-        s_prime_solved_data = fetch_data_from_db(im_sprime_solved_s_prime_select_sql, (f"%_{tissue}",))
-        s_prime_solved_df = pd.DataFrame(s_prime_solved_data, columns=["s_prime_id", "depmap_id"])
-        #s_prime_solved_df.set_index("depmap_id", inplace=True, drop=False)
-
-        cursor.execute(cell_lines_for_tissue_select, (f"%_{tissue}",))
-        tissue_cell_lines = cursor.fetchall()
-        logger.info(f"Total number of cell lines for tissue={tissue}: {len(tissue_cell_lines)}")
-
-        formatted_cell_lines = ', '.join(f"'{w[0]}'" for w in tissue_cell_lines)
-
-        start_id = gene_id_start
-
-        logger.info(f"gene_id_start={gene_id_start}, gene_id_max={gene_id_max}, gene_id_increment={gene_id_increment}")
-        while start_id <= gene_id_max:
-            end_id = (start_id + gene_id_increment) - 1
-            logger.info(f"Started for gene ids between [{start_id} - {end_id}].")
-            damaging_mutations_rows = load_cell_damaging_mutations_from_db(formatted_cell_lines, start_id, end_id)
-            #logger.info(f"Total number of mutation rows for tissue={tissue} and gene ids between [{start_id} - {end_id}]: {len(damaging_mutations_rows)}")
-            damaging_mutations_df = pd.DataFrame(damaging_mutations_rows, columns=["cell_line", "gene_id", "mutation_value"])
-            merge_in_chunks(tissue, damaging_mutations_df, s_prime_solved_df)
-            start_id = start_id + gene_id_increment
-    except Exception as e:
-        traceback.print_exc() 
-    finally:
-        cursor.close()
-        end_time = datetime.now()
-        logger.info(f"Completed in {(end_time - start_time).seconds} seconds")
-
 
 def refresh_data_counts(tissue, source_table_name, gene_id_start, gene_id_max, increment, load_type):
+    logger.info(f"Increment = {increment}")
     start_time = datetime.now()
     cursor = pg_conn.cursor()
     total_data = 0
@@ -533,20 +331,25 @@ def refresh_data_counts(tissue, source_table_name, gene_id_start, gene_id_max, i
             query = f"""
                 SELECT '{data_type}', gene_id, %s, COUNT(*)
                 FROM {source_table_name}
-                WHERE tissue = %s AND gene_id >= %s AND gene_id <= %s
+                WHERE gene_id between %s and %s AND tissue = %s
                 GROUP BY gene_id
             """
-            cursor.execute(query, (tissue, tissue, start_id, end_id))
+
+            cursor.execute(query, (tissue, start_id, end_id, tissue))
             data_count_rows = cursor.fetchall()
 
             # data_type, gene_id, tissue, data_count
             for row in data_count_rows:
                 total_data += row[3]
                 insert_rows.append(row)
-            start_id += increment
         
+            #logger.info("Start writing to DB")
             cursor.executemany(gene_mutation_data_counts_insert_sql, insert_rows)   
             pg_conn.commit()    
+            #logger.info("End writing to DB")
+
+            logger.info(f"Processed genes between {start_id} and {end_id}")
+            start_id += increment
 
         logger.info(f"Total number of {data_type} data for tissue={tissue} and genes [{gene_id_start} - {gene_id_max}]: {total_data}")
 
@@ -560,25 +363,13 @@ def refresh_data_counts(tissue, source_table_name, gene_id_start, gene_id_max, i
         logger.info(f"Completed in {(end_time - start_time).seconds} seconds")
 
 
-#qa_verify_fnl_sprime_pooled_delta_sprime("pooled_delta_s_prime.csv", 7300, "LUNG")
-#qa_verify_im_sprime_s_prime_with_mutations_table("s_prime_mutation_tissue.csv",  7300, "LUNG")
-
-#refresh_pooled_delta_s_results(7300, 'LUNG')
-
-#refresh_mutations_helper('LUNG', 7300, 7300)
-
-#create_indexes("idx_mut_gene_id_tissue", "im_sprime_s_prime_with_mutations", "gene_id, tissue")
-
-#load_cell_damaging_mutations_from_db("LUNG", 1, 1000)
-
-#refresh_s_prime_mutations("PANCREAS", "INCREMENTAL", 1, 18916, 60)
-
-#fetch_data_from_db(test_query_select)
-
-# tissue, source_table_name, gene_id_start, gene_id_max, increment, load_type
-#refresh_data_counts('LUNG', 'im_sprime_s_prime_with_mutations', 1, 18916, 250, 'INITIAL')
-#refresh_data_counts('PANCREAS', 'im_sprime_s_prime_with_mutations', 1, 18916, 250, 'INCREMENTAL')
-
-#CREATE INDEX idx_mut_gene_tissue_line ON im_sprime_s_prime_with_mutations (gene_id, tissue, cell_line);
-#create_indexes("idx_mut_gene_tissue_line", "im_sprime_s_prime_with_mutations", "gene_id, tissue, cell_line")
-
+#create_index("idx_mut_gene", "im_sprime_s_prime_with_mutations", "gene_id")
+#refresh_data_counts('LUNG', 'im_sprime_s_prime_with_mutations', 1, 18916, 100, 'INCREMENTAL')
+#refresh_data_counts('PANCREAS', 'im_sprime_s_prime_with_mutations', 1, 18916, 100, 'INCREMENTAL')
+#refresh_data_counts('KIDNEY', 'im_sprime_s_prime_with_mutations', 8222, 18916, 11, 'INCREMENTAL')
+#refresh_data_counts('THYROID', 'im_sprime_s_prime_with_mutations', 1, 18916, 11, 'INCREMENTAL')
+#refresh_data_counts('BREAST', 'im_sprime_s_prime_with_mutations', 1, 18916, 11, 'INCREMENTAL')
+#refresh_data_counts('OVARY', 'im_sprime_s_prime_with_mutations', 1, 18916, 11, 'INCREMENTAL')
+#refresh_data_counts('PROSTATE', 'im_sprime_s_prime_with_mutations', 17634, 18916, 51, 'INCREMENTAL')
+#refresh_data_counts('PLEURA', 'im_sprime_s_prime_with_mutations', 1, 18916, 51, 'INCREMENTAL')
+#reindex_table("idx_mut_gene")
