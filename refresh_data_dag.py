@@ -34,17 +34,8 @@ logger = logging.getLogger(__name__)  # This logger will be used across all func
 def refreshData():
     #refresh_data_methods.refresh_secondary_dose_curve()
     #refresh_data_methods.refresh_s_prime()
-    #refresh_data_methods.refresh_s_prime_mutations('LUNG', 'INCREMENTAL', 1, 18916, 10)
-    #refresh_data_methods.refresh_s_prime_mutations('PANCREAS', 'INCREMENTAL', 1, 18916, 10)
-    #refresh_data_methods.refresh_pooled_s_prime_mutations('LUNG', 'INCREMENTAL', 3001, 18916, 10)
-    #refresh_data_methods.refresh_pooled_s_prime_mutations('PANCREAS', 'INCREMENTAL', 1, 18916, 10)
-
-    #refresh_data_methods.refresh_s_prime_mutations('STOMACH', 'INCREMENTAL', 1, 18916, 10)
-    #refresh_data_methods.refresh_s_prime_mutations('SKIN', 'INCREMENTAL', 1, 18916, 10)
-    #refresh_data_methods.refresh_s_prime_mutations('BONE', 'INCREMENTAL', 10021, 18916, 10)
-    #refresh_data_methods.refresh_s_prime_mutations('ENDOMETRIUM', 'INCREMENTAL', 1, 18916, 10)
-    #refresh_data_methods.refresh_s_prime_mutations('OESOPHAGUS', 'INCREMENTAL', 1, 18916, 10)
-    #refresh_data_methods.refresh_s_prime_mutations('SOFT_TISSUE', 'INCREMENTAL', 1, 18916, 10)
+    refresh_data_methods.refresh_s_prime_mutations('LIVER', 'INCREMENTAL', 1, 18916, 10)
+    refresh_data_methods.refresh_pooled_s_prime_mutations('LIVER', 'INCREMENTAL', 1, 18916, 10)
     return None
     
 
