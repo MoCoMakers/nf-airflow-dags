@@ -35,7 +35,7 @@ def refreshData():
     #refresh_data_methods.refresh_secondary_dose_curve()
     #refresh_data_methods.refresh_s_prime()
     refresh_data_methods.refresh_s_prime_mutations('LIVER', 'INCREMENTAL', 1, 18916, 10)
-    refresh_data_methods.refresh_pooled_s_prime_mutations('LIVER', 'INITIAL', 1, 18916, 10)
+    refresh_data_methods.refresh_pooled_s_prime_mutations('LIVER', 'INCREMENTAL', 1, 18916, 10)
     return None
     
 
