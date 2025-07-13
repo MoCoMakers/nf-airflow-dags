@@ -65,7 +65,7 @@ DEP_PUBLIC_PATH = _config['files_path']['dep_public_path']
 SEC_RESP_DOSE_CURVE = _config['files_path']['sec_resp_dose_curve']
 OMICS_MUTATIONS_MATRIX = _config['files_path']['omics_mutations_matrix']
 
-pg_hook = PostgresHook(postgres_conn_id='Comp_Bio_Hub_Postgres', schema='public')
+pg_hook = PostgresHook(postgres_conn_id='COMP_BIO_HUB_NEW', schema='public')
 
 # Define the logger at the module level
 logger = logging.getLogger(__name__)  # This logger will be used across all functions
@@ -338,7 +338,7 @@ def refresh_damaging_mutations():
         logger.info(f"Completed refresh process for table '{table_name}' in {(end_time_main - start_time_main).seconds} seconds.")
 
 
-def refresh_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_max, gene_id_increment):
+def refresh_s_prime_mutations_for_tissue(tissue, gene_id_start, gene_id_max, gene_id_increment):
     start_time = datetime.now()
     logger.info(f"refresh_s_prime_mutations started for tissue={tissue}")
 
@@ -348,25 +348,7 @@ def refresh_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_max, gen
     cursor = pg_conn.cursor()
 
     try:
-        # If load type is not incremental, table will be recreated.
-        if load_type == "INCREMENTAL":
-            logger.info(f"Data load type '{load_type}' detected; the database table(s) will not be recreated.")
-            
-        # INITIAL
-        else:
-            logger.info(f"Data load type '{load_type}' detected; the database table(s) will be recreated.")
-            
-            # 1) Drop existing table(s)
-            cursor.execute(f"drop table if exists {table_name}")
-            pg_conn.commit()
-
-            # 2) Create a new table
-            cursor.execute(im_sprime_s_prime_with_mutations_table_sql)
-            pg_conn.commit()
-            logger.info(f"DB table {table_name} has been created.")
-
         start_id = gene_id_start
-
         logger.info(f"gene_id_start={gene_id_start}, gene_id_max={gene_id_max}, gene_id_increment={gene_id_increment}")
         table_columns = ['cell_line', 'gene_id', 'mutation_value', 's_prime_id', 'tissue']
         while start_id <= gene_id_max:
@@ -382,6 +364,42 @@ def refresh_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_max, gen
         end_time = datetime.now()
         logger.info(f"Completed in {(end_time - start_time).seconds} seconds")
 
+
+def refresh_s_prime_mutations(load_type):
+    gene_id_start = 1
+    gene_id_max = 18916
+    gene_id_increment = 10
+    # Access and split the list
+    tissue_list = _config.get('data', 'tissues').split(',')
+
+    table_name = "im_sprime_s_prime_with_mutations"
+
+    pg_conn = pg_hook.get_conn()
+    cursor = pg_conn.cursor()
+
+    try:
+        # If load type is not incremental, table will be recreated.
+        if load_type == "INCREMENTAL":
+            logger.info(f"Data load type '{load_type}' detected; the database table(s) will not be recreated.")
+                
+        # INITIAL
+        else:
+            logger.info(f"Data load type '{load_type}' detected; the database table(s) will be recreated.")
+                
+            # 1) Drop existing table(s)
+            cursor.execute(f"drop table if exists {table_name}")
+            pg_conn.commit()
+
+            # 2) Create a new table
+            cursor.execute(im_sprime_s_prime_with_mutations_table_sql)
+            pg_conn.commit()
+            logger.info(f"DB table {table_name} has been created.")
+        for tissue in tissue_list:
+            refresh_s_prime_mutations_for_tissue(tissue, gene_id_start, gene_id_max, gene_id_increment)
+    except Exception as e:
+        traceback.print_exc() 
+    finally:
+        cursor.close()
 
 def refresh_pooled_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_max, gene_id_increment):
     start_time = datetime.now()
