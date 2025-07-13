@@ -152,7 +152,7 @@ def refresh_secondary_dose_curve():
         pg_conn.commit()
         logger.info(f"DB table {table_name} has been created.")
         
-        chunksize = 20000
+        chunksize = 50000
         total = 0
         for chunk in pd.read_csv(input_folder / data_file_name, chunksize=chunksize):
             start_time_insert = datetime.now()
@@ -162,10 +162,66 @@ def refresh_secondary_dose_curve():
             cursor.executemany(data_insert_sql, rows)
             pg_conn.commit()
             end_time_insert = datetime.now()
-            #logger.info(f"Duration to insert {len(chunk)} records: {(end_time_insert - start_time_insert).seconds} seconds")
+            logger.info(f"Duration to insert {len(chunk)} records: {(end_time_insert - start_time_insert).seconds} seconds")
             total = total + len(chunk.values)
             time.sleep(3)
         logger.info(f"Total number of records inserted to {table_name} table = {total}") 
+        
+    except Exception as e:
+        logger.info(f"Error happened while refreshing {table_name} table.")
+        traceback.print_exc()
+        pg_conn.rollback()    
+    finally:
+        pg_conn.commit()
+        cursor.close()
+        end_time_main = datetime.now()
+        logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
+
+def refresh_secondary_dose_curve_copy_csv():
+    start_time_main = datetime.now()
+    
+    table_name = "im_dep_raw_secondary_dose_curve"
+    table_create_sql = secondary_dose_curve_raw_table_sql
+    file_path = DEP_PRISM_PATH
+    data_file_name = SEC_RESP_DOSE_CURVE
+    drop_table_sql = f"drop table if exists {table_name}"
+        
+    input_folder = Path(file_path)
+    pg_conn = pg_hook.get_conn()
+    cursor = pg_conn.cursor()
+
+    try:
+        logger.info(f"Data refresh process started for {table_name}.")
+        cursor.execute(drop_table_sql)
+        pg_conn.commit()
+
+        cursor.execute(table_create_sql)
+        pg_conn.commit()
+        logger.info(f"DB table {table_name} has been created.")
+        chunk_size = 20000
+        
+        df = pd.read_csv(input_folder/data_file_name)
+        column_names = df.columns.tolist()
+        for i, start in enumerate(range(0, len(df), chunk_size)):
+            end = start + chunk_size
+            chunk = df.iloc[start:end]
+            
+            # Create a StringIO object to write DataFrame as CSV
+            csv_buffer = io.StringIO()
+            df.to_csv(csv_buffer, index=False, header=False)
+            csv_buffer.seek(0)  # Rewind the StringIO object to the beginning
+            #logger.info(f"Chunk has been copied to CSV.")
+
+
+            # Use COPY FROM with the StringIO object
+            with pg_conn.cursor() as cursor:
+                cursor.copy_expert(
+                    f"COPY {table_name} ({', '.join(column_names)}) FROM STDIN WITH CSV",
+                    csv_buffer
+                )
+                pg_conn.commit()
+            total_rows_inserted += len(chunk)
+        logger.info(f"Total number of records inserted to {table_name} table = {total_rows_inserted}") 
         
     except Exception as e:
         logger.info(f"Error happened while refreshing {table_name} table.")
