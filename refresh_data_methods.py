@@ -177,6 +177,7 @@ def refresh_secondary_dose_curve():
         end_time_main = datetime.now()
         logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
 
+# TASK_1:
 #Load all dose-response-curve-parameters.csv from ~/nf_streamlit/app/data$
 #Table name -> im_dep_raw_secondary_dose_curve
 def refresh_secondary_dose_curve_copy_csv():
@@ -192,12 +193,9 @@ def refresh_secondary_dose_curve_copy_csv():
     pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
 
-    column_names = ['broad_id', 'depmap_id', 'ccle_name', 'screen_id',
-                'upper_limit', 'lower_limit', 'slope',
-                'r2', 'auc', 'ec50', 'ic50',
-                'name', 'moa', 'target',
-                'disease_area', 'indication',
-                'smiles', 'phase', 'passed_str_profiling', 'row_name']
+    column_names = ['broad_id', 'depmap_id', 'ccle_name', 'screen_id', 'upper_limit', 'lower_limit', 
+                    'slope', 'r2', 'auc', 'ec50', 'ic50', 'name', 'moa', 'target', 'disease_area', 
+                    'indication', 'smiles', 'phase', 'passed_str_profiling', 'row_name']
 
     try:
         logger.info(f"Data refresh process started for {table_name}.")
@@ -305,6 +303,87 @@ def refresh_s_prime():
         cursor.close()
         end_time_main = datetime.now()
         logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
+
+
+# TASK_2:
+#Solve S' for all entries in response-curve-parameters
+#Table name -> im_sprime_solved_s_prime
+def refresh_s_prime_csv():
+    start_time_main = datetime.now()
+    table_name = "im_sprime_solved_s_prime"
+    table_create_sql = im_sprime_solved_s_prime_table_sql
+    drop_table_sql = f"drop table if exists {table_name}"
+
+    pg_conn = pg_hook.get_conn()
+    cursor = pg_conn.cursor()
+
+    try:
+        logger.info(f"Data refresh process started for {table_name}.")
+        
+        cursor.execute(drop_table_sql)
+        pg_conn.commit()
+        
+        cursor.execute(table_create_sql)
+        pg_conn.commit()
+        logger.info(f"DB table {table_name} has been created.")
+
+        secondary_raw_data = fetch_data_from_db(secondary_dose_curve_raw_select)
+
+        column_names = ['broad_id', 'depmap_id', 'ccle_name', 'screen_id', 'upper_limit', 'lower_limit', 
+                        'slope', 'r2', 'auc', 'ec50', 'ic50', 'name', 'moa', 'target', 'disease_area', 'indication',
+                        'smiles', 'phase', 'passed_str_profiling', 'row_name', 'eff', 'eff_100', 'eff_ec50', 's_prime']
+        
+        total_rows = 0
+        for rows_batch in utils.batch(secondary_raw_data, 10000):
+            insert_rows = []
+            for row in rows_batch:
+
+                # Derive EFF (upper_limit - lower_limit) 
+                #df['EFF'] = df['upper_limit'] - df['lower_limit']
+                EFF = row[4]  - row[5]
+
+                # Derive EFF*100
+                #df['EFF*100'] = df['EFF'] * 100
+                EFF_100 = EFF * 100
+
+                # Derive EFF/EC50
+                #df['EFF/EC50'] = df['EFF'] / df['ec50']
+                EFF_EC50 = EFF / row[9]
+
+                # Derive S'
+                # ASINH((EFF*100)/EC50)
+                #df["S'"] = np.arcsinh(df['EFF*100'] / df['ec50'])
+                S_PRIME = np.arcsinh(EFF_100 / row[9])
+
+                new_row_values = list(row)
+                new_row_values.extend([EFF, EFF_100, EFF_EC50, S_PRIME])
+
+                insert_rows.append(tuple(new_row_values))
+            
+            df = pd.DataFrame(insert_rows, columns=column_names)
+            csv_buffer = io.StringIO()
+            df.to_csv(csv_buffer, index=False, header=False)
+            csv_buffer.seek(0)  # Rewind the StringIO object to the beginning
+
+            # Use COPY FROM with the StringIO object
+            with pg_conn.cursor() as cursor:
+                cursor.copy_expert(
+                    f"COPY {table_name} ({', '.join(column_names)}) FROM STDIN WITH CSV",
+                    csv_buffer
+                )
+            pg_conn.commit()
+            total_rows = total_rows + len(insert_rows)
+            logger.info("Batch completed.")
+        logger.info(f"Total # of rows inserted into {table_name}: {total_rows}")
+    except Exception as e:
+        traceback.print_exc() 
+        pg_conn.rollback()
+    finally:
+        pg_conn.commit()
+        cursor.close()
+        end_time_main = datetime.now()
+        logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
+
 
 # TASK_3:
 #Load OmicsSomaticMutationsMatrixDamaging.csv from ~/nf_streamlit/app/data
