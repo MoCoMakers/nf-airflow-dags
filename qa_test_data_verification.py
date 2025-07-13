@@ -362,6 +362,23 @@ def refresh_data_counts(tissue, source_table_name, gene_id_start, gene_id_max, i
         end_time = datetime.now()
         logger.info(f"Completed in {(end_time - start_time).seconds} seconds")
 
+def drop_table(table_name):
+    
+    drop_table_sql = f"drop table if exists {table_name}"
+
+    cursor = pg_conn.cursor()
+
+    try:
+        cursor.execute(drop_table_sql)
+        logger.info(f"Table {table_name} has been dropped.")
+    except Exception as e:
+        traceback.print_exc() 
+        pg_conn.rollback()
+    finally:
+        pg_conn.commit()
+        cursor.close()
+
+
 
 #create_index("idx_mut_gene", "im_sprime_s_prime_with_mutations", "gene_id")
 #refresh_data_counts('LUNG', 'im_sprime_s_prime_with_mutations', 1, 18916, 100, 'INCREMENTAL')
@@ -373,3 +390,4 @@ def refresh_data_counts(tissue, source_table_name, gene_id_start, gene_id_max, i
 #refresh_data_counts('PROSTATE', 'im_sprime_s_prime_with_mutations', 17634, 18916, 51, 'INCREMENTAL')
 #refresh_data_counts('PLEURA', 'im_sprime_s_prime_with_mutations', 1, 18916, 51, 'INCREMENTAL')
 #reindex_table("idx_mut_gene")
+drop_table('fnl_sprime_pooled_delta_sprime')

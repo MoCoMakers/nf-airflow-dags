@@ -177,6 +177,8 @@ def refresh_secondary_dose_curve():
         end_time_main = datetime.now()
         logger.info(f"Duration to complete the refresh process for {table_name}: {(end_time_main - start_time_main).seconds} seconds")
 
+#Load all dose-response-curve-parameters.csv from ~/nf_streamlit/app/data$
+#Table name -> im_dep_raw_secondary_dose_curve
 def refresh_secondary_dose_curve_copy_csv():
     start_time_main = datetime.now()
     
@@ -190,6 +192,13 @@ def refresh_secondary_dose_curve_copy_csv():
     pg_conn = pg_hook.get_conn()
     cursor = pg_conn.cursor()
 
+    column_names = ['broad_id', 'depmap_id', 'ccle_name', 'screen_id',
+                'upper_limit', 'lower_limit', 'slope',
+                'r2', 'auc', 'ec50', 'ic50',
+                'name', 'moa', 'target',
+                'disease_area', 'indication',
+                'smiles', 'phase', 'passed_str_profiling', 'row_name']
+
     try:
         logger.info(f"Data refresh process started for {table_name}.")
         cursor.execute(drop_table_sql)
@@ -198,30 +207,27 @@ def refresh_secondary_dose_curve_copy_csv():
         cursor.execute(table_create_sql)
         pg_conn.commit()
         logger.info(f"DB table {table_name} has been created.")
-        chunk_size = 20000
         
         df = pd.read_csv(input_folder/data_file_name)
-        column_names = df.columns.tolist()
-        for i, start in enumerate(range(0, len(df), chunk_size)):
-            end = start + chunk_size
-            chunk = df.iloc[start:end]
-            
-            # Create a StringIO object to write DataFrame as CSV
-            csv_buffer = io.StringIO()
-            df.to_csv(csv_buffer, index=False, header=False)
-            csv_buffer.seek(0)  # Rewind the StringIO object to the beginning
-            #logger.info(f"Chunk has been copied to CSV.")
+        #column_names = df.columns.tolist()
+        total_rows_inserted = 0
+        logger.info(f"Number of rows in {data_file_name} = {len(df)}")
+        # Create a StringIO object to write DataFrame as CSV
+        
+        csv_buffer = io.StringIO()
+        df.to_csv(csv_buffer, index=False, header=False)
+        csv_buffer.seek(0)  # Rewind the StringIO object to the beginning
+        #logger.info(f"Chunk has been copied to CSV.")
 
 
-            # Use COPY FROM with the StringIO object
-            with pg_conn.cursor() as cursor:
-                cursor.copy_expert(
-                    f"COPY {table_name} ({', '.join(column_names)}) FROM STDIN WITH CSV",
-                    csv_buffer
-                )
-                pg_conn.commit()
-            total_rows_inserted += len(chunk)
-        logger.info(f"Total number of records inserted to {table_name} table = {total_rows_inserted}") 
+        # Use COPY FROM with the StringIO object
+        with pg_conn.cursor() as cursor:
+            cursor.copy_expert(
+                f"COPY {table_name} ({', '.join(column_names)}) FROM STDIN WITH CSV",
+                csv_buffer
+            )
+            pg_conn.commit()
+        logger.info(f"Total number of records inserted to {table_name} table = {len(df)}") 
         
     except Exception as e:
         logger.info(f"Error happened while refreshing {table_name} table.")
