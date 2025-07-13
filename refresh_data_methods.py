@@ -266,7 +266,7 @@ def refresh_s_prime():
         secondary_raw_data = fetch_data_from_db(secondary_dose_curve_raw_select)
         
         total_rows = 0
-        for rows_batch in utils.batch(secondary_raw_data, 10000):
+        for rows_batch in utils.batch(secondary_raw_data, 50000):
             insert_rows = []
             for row in rows_batch:
 
@@ -294,7 +294,7 @@ def refresh_s_prime():
             
             cursor.executemany(data_insert_sql, insert_rows)
             pg_conn.commit()
-            #logger.info(f"{len(insert_rows)} rows inserted into {table_name}")
+            logger.info(f"{len(insert_rows)} rows inserted into {table_name}.")
             total_rows = total_rows + len(insert_rows)
         logger.info(f"Total # of rows inserted into {table_name}: {total_rows}")
     except Exception as e:
