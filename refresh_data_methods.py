@@ -511,7 +511,9 @@ def refresh_s_prime_mutations(load_type):
     gene_id_max = 18916
     gene_id_increment = 10
     # Access and split the list
-    tissue_list = _config.get('data', 'tissues').split(',')
+    tissues = _config['data']['tissues']
+    tissue_list = tissues.split(', ')
+    logger.info(f"Tissues: {tissue_list}, type: {type(tissue_list)}")
 
     table_name = "im_sprime_s_prime_with_mutations"
 

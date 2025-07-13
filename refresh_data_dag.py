@@ -33,7 +33,9 @@ logger = logging.getLogger(__name__)  # This logger will be used across all func
 
 def refreshData():
     #refresh_data_methods.refresh_secondary_dose_curve_copy_csv()
-    refresh_data_methods.refresh_s_prime()
+    #refresh_data_methods.refresh_s_prime_csv()
+    refresh_data_methods.refresh_omic_genes()
+    refresh_data_methods.refresh_damaging_mutations()
     #refresh_data_methods.refresh_s_prime_mutations('INITIAL')
     #refresh_data_methods.refresh_pooled_s_prime_mutations('LIVER', 'INCREMENTAL', 1, 18916, 10)
     return None
