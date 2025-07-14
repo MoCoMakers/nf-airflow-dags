@@ -544,9 +544,14 @@ def refresh_s_prime_mutations(load_type):
     finally:
         cursor.close()
 
-def refresh_pooled_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_max, gene_id_increment):
-    start_time = datetime.now()
-    logger.info(f"refresh_pooled_s_prime_mutations started for tissue={tissue}")
+def refresh_pooled_s_prime_mutations(load_type):
+    gene_id_start = 1
+    gene_id_max = 18916
+    gene_id_increment = 10
+    # Access and split the list
+    tissues = _config['data']['tissues']
+    tissue_list = tissues.split(', ')
+    logger.info(f"Tissues: {tissue_list}, type: {type(tissue_list)}")
 
     table_name = "fnl_sprime_pooled_delta_sprime"
 
@@ -557,11 +562,11 @@ def refresh_pooled_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_m
         # If load type is not incremental, table will be recreated.
         if load_type == "INCREMENTAL":
             logger.info(f"Data load type '{load_type}' detected; the database table(s) will not be recreated.")
-            
+                
         # INITIAL
         else:
             logger.info(f"Data load type '{load_type}' detected; the database table(s) will be recreated.")
-            
+                
             # 1) Drop existing table(s)
             cursor.execute(f"drop table if exists {table_name}")
             pg_conn.commit()
@@ -570,7 +575,23 @@ def refresh_pooled_s_prime_mutations(tissue, load_type, gene_id_start, gene_id_m
             cursor.execute(fnl_sprime_pooled_delta_sprime_table_sql)
             pg_conn.commit()
             logger.info(f"DB table {table_name} has been created.")
+        for tissue in tissue_list:
+            refresh_pooled_s_prime_mutations_for_tissue(tissue, gene_id_start, gene_id_max, gene_id_increment)
+    except Exception as e:
+        traceback.print_exc() 
+    finally:
+        cursor.close()
 
+def refresh_pooled_s_prime_mutations_for_tissue(tissue, gene_id_start, gene_id_max, gene_id_increment):
+    start_time = datetime.now()
+    logger.info(f"refresh_pooled_s_prime_mutations started for tissue={tissue}")
+
+    table_name = "fnl_sprime_pooled_delta_sprime"
+
+    pg_conn = pg_hook.get_conn()
+    cursor = pg_conn.cursor()
+
+    try:
         start_id = gene_id_start
 
         solved_prime_query = """SELECT id AS s_prime_id, depmap_id, ccle_name, name, s_prime, ec50, auc, moa, target
