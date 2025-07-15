@@ -575,14 +575,18 @@ def refresh_pooled_s_prime_mutations(load_type):
             cursor.execute(fnl_sprime_pooled_delta_sprime_table_sql)
             pg_conn.commit()
             logger.info(f"DB table {table_name} has been created.")
+        
+        solved_prime_query = """SELECT id AS s_prime_id, depmap_id, ccle_name, name, s_prime, ec50, auc, moa, target
+                                FROM im_sprime_solved_s_prime WHERE ccle_name LIKE %s order by depmap_id"""
         for tissue in tissue_list:
-            refresh_pooled_s_prime_mutations_for_tissue(tissue, gene_id_start, gene_id_max, gene_id_increment)
+            solved_prime_df = pd.read_sql(solved_prime_query, pg_conn, params=(f"%_{tissue}",))
+            refresh_pooled_s_prime_mutations_for_tissue(tissue, gene_id_start, gene_id_max, gene_id_increment, solved_prime_df)
     except Exception as e:
         traceback.print_exc() 
     finally:
         cursor.close()
 
-def refresh_pooled_s_prime_mutations_for_tissue(tissue, gene_id_start, gene_id_max, gene_id_increment):
+def refresh_pooled_s_prime_mutations_for_tissue(tissue, gene_id_start, gene_id_max, gene_id_increment, solved_prime_df):
     start_time = datetime.now()
     logger.info(f"refresh_pooled_s_prime_mutations started for tissue={tissue}")
 
@@ -593,10 +597,6 @@ def refresh_pooled_s_prime_mutations_for_tissue(tissue, gene_id_start, gene_id_m
 
     try:
         start_id = gene_id_start
-
-        solved_prime_query = """SELECT id AS s_prime_id, depmap_id, ccle_name, name, s_prime, ec50, auc, moa, target
-                                FROM im_sprime_solved_s_prime WHERE ccle_name LIKE %s order by depmap_id"""
-        solved_prime_df = pd.read_sql(solved_prime_query, pg_conn, params=(f"%_{tissue}",))
 
         # Fetch mutation data
         mutation_query = """SELECT cell_line, gene_id, mutation_value FROM im_dep_sprime_damaging_mutations WHERE gene_id BETWEEN %s AND %s  order by gene_id"""
