@@ -256,6 +256,7 @@ def create_index(index_name, table_name, fields):
     create_index_sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({fields})"
 
     try:
+        logger.info(f"Indexing {table_name} table.")
         # Create a cursor object
         cursor = pg_conn.cursor()
 
@@ -273,7 +274,6 @@ def create_index(index_name, table_name, fields):
         end_time = datetime.now()
         cursor.close()
         logger.info(f"Duration to complete the process: {(end_time - start_time).seconds} seconds")
-
 
 def load_cell_damaging_mutations_from_db(tissue_cell_lines, gene_id_start, gene_id_end):
     cursor = pg_conn.cursor()
@@ -380,14 +380,11 @@ def drop_table(table_name):
 
 
 
-#create_index("idx_mut_gene", "im_sprime_s_prime_with_mutations", "gene_id")
-#refresh_data_counts('LUNG', 'im_sprime_s_prime_with_mutations', 1, 18916, 100, 'INCREMENTAL')
-#refresh_data_counts('PANCREAS', 'im_sprime_s_prime_with_mutations', 1, 18916, 100, 'INCREMENTAL')
-#refresh_data_counts('KIDNEY', 'im_sprime_s_prime_with_mutations', 8222, 18916, 11, 'INCREMENTAL')
-#refresh_data_counts('THYROID', 'im_sprime_s_prime_with_mutations', 1, 18916, 11, 'INCREMENTAL')
-#refresh_data_counts('BREAST', 'im_sprime_s_prime_with_mutations', 1, 18916, 11, 'INCREMENTAL')
-#refresh_data_counts('OVARY', 'im_sprime_s_prime_with_mutations', 1, 18916, 11, 'INCREMENTAL')
-#refresh_data_counts('PROSTATE', 'im_sprime_s_prime_with_mutations', 17634, 18916, 51, 'INCREMENTAL')
-#refresh_data_counts('PLEURA', 'im_sprime_s_prime_with_mutations', 1, 18916, 51, 'INCREMENTAL')
 #reindex_table("idx_mut_gene")
-drop_table('fnl_sprime_pooled_delta_sprime')
+#drop_table('fnl_sprime_pooled_delta_sprime')
+# create_index("idx_sprime_mut_gene", "im_sprime_s_prime_with_mutations", "gene_id")
+# create_index("idx_sprime_mut_tissue", "im_sprime_s_prime_with_mutations", "tissue")
+# create_index("idx_sprime_mut_gene_tissue", "im_sprime_s_prime_with_mutations", "gene_id, tissue")
+# create_index("idx_pool_gene", "fnl_sprime_pooled_delta_sprime", "gene_id")
+# create_index("idx_pool_tissue", "fnl_sprime_pooled_delta_sprime", "tissue")
+# create_index("idx_pool_gene_tissue", "fnl_sprime_pooled_delta_sprime", "gene_id, tissue")

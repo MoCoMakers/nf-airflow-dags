@@ -791,3 +791,30 @@ def compute_pval(row):
     if len(row['ref_s_prime']) > 0 and len(row['test_s_prime']) > 0:
         return mannwhitneyu(row['ref_s_prime'], row['test_s_prime'], alternative='two-sided').pvalue
     return np.nan
+
+
+def create_index(index_name, table_name, fields):
+    start_time = datetime.now()
+    
+    drop_index_sql = f"DROP INDEX IF EXISTS {index_name}"
+    create_index_sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({fields})"
+
+    try:
+        logger.info(f"Indexing {table_name} table.")
+        # Create a cursor object
+        cursor = pg_conn.cursor()
+
+        cursor.execute(drop_index_sql)
+        pg_conn.commit()
+        logger.info(f"Index {index_name} has been dropped.")
+
+        cursor.execute(create_index_sql)
+        pg_conn.commit()
+        logger.info(f"Index {index_name} has been created for fields {fields} .")
+        
+    except Exception as e:
+        traceback.print_exc() 
+    finally:
+        end_time = datetime.now()
+        cursor.close()
+        logger.info(f"Duration to complete the process: {(end_time - start_time).seconds} seconds")
