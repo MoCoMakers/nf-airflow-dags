@@ -547,7 +547,7 @@ def refresh_s_prime_mutations(load_type):
 def refresh_pooled_s_prime_mutations(load_type):
     gene_id_start = 1
     gene_id_max = 18916
-    gene_id_increment = 10
+    gene_id_increment = 25
     # Access and split the list
     tissues = _config['data']['tissues']
     tissue_list = tissues.split(', ')

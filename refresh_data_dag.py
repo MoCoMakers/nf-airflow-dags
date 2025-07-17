@@ -36,16 +36,16 @@ def refreshData():
     #refresh_data_methods.refresh_s_prime_csv()
     #refresh_data_methods.refresh_omic_genes()
     #refresh_data_methods.refresh_damaging_mutations()
-    #refresh_data_methods.refresh_s_prime_mutations('INITIAL')
-    refresh_data_methods.refresh_pooled_s_prime_mutations('INITIAL')
+    #refresh_data_methods.refresh_s_prime_mutations('INCREMENTAL')
+    #refresh_data_methods.refresh_pooled_s_prime_mutations('INCREMENTAL')
 
     #Create indexes for the tables
-    refresh_data_methods.create_index("idx_sprime_mut_gene", "im_sprime_s_prime_with_mutations", "gene_id")
-    refresh_data_methods.create_index("idx_sprime_mut_tissue", "im_sprime_s_prime_with_mutations", "tissue")
-    refresh_data_methods.create_index("idx_sprime_mut_gene_tissue", "im_sprime_s_prime_with_mutations", "gene_id, tissue")
-    refresh_data_methods.create_index("idx_pool_gene", "fnl_sprime_pooled_delta_sprime", "gene_id")
-    refresh_data_methods.create_index("idx_pool_tissue", "fnl_sprime_pooled_delta_sprime", "tissue")
-    refresh_data_methods.create_index("idx_pool_gene_tissue", "fnl_sprime_pooled_delta_sprime", "gene_id, tissue")
+    # refresh_data_methods.create_index("idx_sprime_mut_gene", "im_sprime_s_prime_with_mutations", "gene_id")
+    # refresh_data_methods.create_index("idx_sprime_mut_tissue", "im_sprime_s_prime_with_mutations", "tissue")
+    # refresh_data_methods.create_index("idx_sprime_mut_gene_tissue", "im_sprime_s_prime_with_mutations", "gene_id, tissue")
+    # refresh_data_methods.create_index("idx_pool_gene", "fnl_sprime_pooled_delta_sprime", "gene_id")
+    # refresh_data_methods.create_index("idx_pool_tissue", "fnl_sprime_pooled_delta_sprime", "tissue")
+    # refresh_data_methods.create_index("idx_pool_gene_tissue", "fnl_sprime_pooled_delta_sprime", "gene_id, tissue")
     return None
     
 
