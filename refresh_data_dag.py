@@ -35,7 +35,7 @@ def refreshData():
     #refresh_data_methods.refresh_secondary_dose_curve_copy_csv()
     #refresh_data_methods.refresh_s_prime_csv()
     #refresh_data_methods.refresh_omic_genes()
-    refresh_data_methods.refresh_damaging_mutations()
+    #refresh_data_methods.refresh_damaging_mutations()
     #refresh_data_methods.refresh_s_prime_mutations('INCREMENTAL')
     #refresh_data_methods.refresh_pooled_s_prime_mutations('INCREMENTAL')
 

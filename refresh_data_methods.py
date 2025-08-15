@@ -36,10 +36,6 @@ im_sprime_solved_s_prime_select_sql = _config['sql']['im_sprime_solved_s_prime_s
 im_dep_sprime_damaging_mutations_table_sql = _config['sql']['im_dep_sprime_damaging_mutations_table_sql']
 im_dep_sprime_damaging_mutations_insert_sql = _config['sql']['im_dep_sprime_damaging_mutations_insert_sql']
 
-im_dep_sprime_damaging_mutations_temp_table_sql = _config['sql']['im_dep_sprime_damaging_mutations_temp_table_sql']
-im_dep_sprime_damaging_mutations_temp_insert_sql = _config['sql']['im_dep_sprime_damaging_mutations_temp_insert_sql']
-
-
 im_omics_gene_table_sql = _config['sql']['im_omics_gene_table_sql']
 im_omics_gene_insert_sql = _config['sql']['im_omics_gene_insert_sql']
 im_omics_gene_select_sql = _config['sql']['im_omics_gene_select_sql']
@@ -394,8 +390,8 @@ def refresh_s_prime_csv():
 #Table name -> im_dep_sprime_damaging_mutations
 def refresh_damaging_mutations():
     start_time_main = datetime.now()
-    table_name = "im_dep_sprime_damaging_mutations_temp"
-    table_create_sql = im_dep_sprime_damaging_mutations_temp_table_sql
+    table_name = "im_dep_sprime_damaging_mutations"
+    table_create_sql = im_dep_sprime_damaging_mutations_table_sql
     drop_table_sql = f"drop table if exists {table_name}"
     input_folder = Path(DEP_PUBLIC_PATH)
     data_file_name = OMICS_MUTATIONS_MATRIX
@@ -447,8 +443,8 @@ def refresh_damaging_mutations():
         df_long["gene_id"] = df_long["gene_col"].map(clean_column_map)
 
         # Step 7: (Optional) Filter rows to include only specific mutation values
-        logger.info("Step 7: (Optional) Filter rows to include only specific mutation values")
-        df_long = df_long[df_long["mutation_value"].isin([1])]
+        logger.info("Step 7: (Optional) Filter rows to include only specific mutation values - SKIPPED")
+        # df_long = df_long[df_long["mutation_value"].isin([0, 1, 2])]
 
         # Step 8: Final DataFrame for DB insertion
         logger.info("Step 8: Final DataFrame for DB insertion")
